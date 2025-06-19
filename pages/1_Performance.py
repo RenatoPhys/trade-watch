@@ -5,10 +5,10 @@
 import numpy as np
 import datetime as dt
 import pandas as pd
-import datetime as dt
 import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
+import json
 
 #################################
 ###       Preâmbulo       ###
@@ -37,429 +37,305 @@ st.markdown('''
             
         ''')
 
-# Selecting the desired strategy
-option_strat = st.selectbox(
-    'Which Strategy would you like to select?',
-    ('0-All','2-Surfing the trend', '3-Iron box', '4-gold 13','5-gold 1011'))
+#################################
+### Carregar parâmetros da estratégia ###
+#################################
 
-st.write('You selected:', option_strat)
+# Carregar o arquivo JSON com os parâmetros da estratégia
+with open('combined_strategy_teste.json', 'r') as f:
+    strategy_params = json.load(f)
 
-# this parameter will be used to import some tables
-strat = option_strat.split('-')[0]
+# Extrair informações importantes
+symbol = strategy_params['symbol']
+timeframe = strategy_params['timeframe']
+strategy_name = strategy_params['strategy']
+magic_number = strategy_params['magic_number']
 
-# Visualizando estratégias individuais
-if strat !='0':
-    ### Importando json com parametros de data inicial - data final
-    df_params = pd.read_json(f'params_strat{strat}.json')
-    data_ini = df_params['data_ini'][0]
-    data_fim = df_params['data_fim'][0]
+# Mostrar informações da estratégia
+st.write(f"### Strategy: {strategy_name}")
+st.write(f"**Symbol:** {symbol} | **Timeframe:** {timeframe} | **Magic Number:** {magic_number}")
 
-    # Importando dados de trades reais
-    dfmt5_2 = pd.read_csv(f'bases/dados_real_mt5_strat{strat}.csv', index_col=['time'], parse_dates=['time'])
+#################################
+### Importar dados ###
+#################################
 
-    # Importando dados teóricos 
-    dft = pd.read_csv(f'bases/backtest_deploy_strat{strat}.csv', index_col=['time'], parse_dates=['time'])
-    # Selecionando apenas entradas
-    dft = dft[dft['strategy_2']!=0]
-    dft.columns = dft.columns + '_teo'
-    dft.rename(columns = {'safra_teo': 'safra'}, inplace = True)
+# Importar dados de trades reais
+df_real = pd.read_csv(f'bases/results_{symbol}_{timeframe}_{strategy_name}_{magic_number}.csv', 
+                     parse_dates=['time', 'time_ent', 'time_ext'])
 
-else:
-    # Importando todas as estratégias
-    df = pd.DataFrame()
-    for i in [2,3,4,5]:
-        dftmp = pd.read_csv(f'bases/dados_real_mt5_strat{i}.csv', index_col=['time'], parse_dates=['time'])
-        dftmp.rename(columns={'cstrategy_2':f'cstrategy_{i}'}, inplace=True)
-        dftmp = dftmp[[f'cstrategy_{i}']]
-        dftmp = dftmp.resample('d').last().ffill()
-        df = pd.concat([df, dftmp], axis = 1)
+# Importar dados de backtest
+df_backtest = pd.read_csv(f'bases/backtest_{symbol}_{timeframe}_{strategy_name}_{magic_number}.csv', 
+                         index_col=['time'], parse_dates=['time'])
 
-    # estratégia acumulada
-    df['cstrategy'] = df.sum(axis=1)
-
-    # Cálculo do drawdown
-    df['cummax'] = df['cstrategy'].cummax()
-    df["dd"] = df['cstrategy'] - df['cummax']
-
+# Processar dados do real
+df_real['time'] = pd.to_datetime(df_real['time'])
+df_real.set_index('time', inplace=True)
 
 #################################
 ###  1. Performance Acumulada  ###
 #################################
 
-## Plotando resultados
-if strat !='0':
-    figret = go.Figure()
-    figret.add_trace(go.Scatter(
-        x=dfmt5_2.index,
-        y=dfmt5_2["cstrategy_2"],
-        name='Real'
+st.write("## 1. Cumulative Return")
+
+# Criar figura para retorno acumulado
+fig_return = go.Figure()
+
+# Adicionar linha do backtest
+fig_return.add_trace(go.Scatter(
+    x=df_backtest.index,
+    y=df_backtest["equity"] - 30000,  # Subtrair capital inicial
+    name='Backtest',
+    line=dict(color="#d62728", width=2)
+))
+
+# Adicionar linha do real
+fig_return.add_trace(go.Scatter(
+    x=df_real.index,
+    y=df_real["cstrategy"],
+    name='Real',
+    line=dict(color="#1f77b4", width=2)
+))
+
+# Configurar layout
+fig_return.update_layout(
+    title=dict(text="Cumulative Return", font=dict(size=24)),
+    xaxis_title=dict(text="<b>Date</b>", font=dict(size=16)),
+    yaxis_title=dict(text="<b>Return (R$)</b>", font=dict(size=16)),
+    hovermode='x unified',
+    showlegend=True,
+    height=500,
+    template="plotly_white"
+)
+
+st.plotly_chart(fig_return, use_container_width=True)
+
+#################################
+###  2. Métricas de Performance  ###
+#################################
+
+st.write("## 2. Performance Metrics")
+
+col1, col2, col3, col4 = st.columns(4)
+
+# Calcular métricas do real
+total_return_real = df_real['cstrategy'].iloc[-1] if len(df_real) > 0 else 0
+total_trades_real = len(df_real)
+winning_trades_real = len(df_real[df_real['profit'] > 0])
+win_rate_real = (winning_trades_real / total_trades_real * 100) if total_trades_real > 0 else 0
+
+# Calcular métricas do backtest
+total_return_backtest = df_backtest['equity'].iloc[-1] - 30000 if len(df_backtest) > 0 else 0
+total_trades_backtest = len(df_backtest[df_backtest['position'] != 0])
+
+with col1:
+    st.metric("Total Return (Real)", f"R$ {total_return_real:,.2f}")
+    st.metric("Total Return (Backtest)", f"R$ {total_return_backtest:,.2f}")
+
+with col2:
+    st.metric("Total Trades (Real)", total_trades_real)
+    st.metric("Total Trades (Backtest)", total_trades_backtest)
+
+with col3:
+    st.metric("Win Rate (Real)", f"{win_rate_real:.1f}%")
+
+with col4:
+    st.metric("Avg Trade (Real)", f"R$ {total_return_real/total_trades_real:.2f}" if total_trades_real > 0 else "N/A")
+
+#################################
+###  3. Drawdown  ###
+#################################
+
+st.write("## 3. Drawdown")
+
+# Calcular drawdown do real
+df_real['cummax'] = df_real['cstrategy'].cummax()
+df_real['drawdown'] = df_real['cstrategy'] - df_real['cummax']
+
+# Calcular drawdown do backtest
+df_backtest['equity_adjusted'] = df_backtest['equity'] - 30000
+df_backtest['cummax'] = df_backtest['equity_adjusted'].cummax()
+df_backtest['drawdown'] = df_backtest['equity_adjusted'] - df_backtest['cummax']
+
+# Criar figura do drawdown
+fig_dd = go.Figure()
+
+# Adicionar drawdown do real
+fig_dd.add_trace(go.Scatter(
+    x=df_real.index,
+    y=df_real['drawdown'],
+    name='Real',
+    fill='tozeroy',
+    line=dict(color="#1f77b4")
+))
+
+# Adicionar drawdown do backtest
+fig_dd.add_trace(go.Scatter(
+    x=df_backtest.index,
+    y=df_backtest['drawdown'],
+    name='Backtest',
+    fill='tozeroy',
+    line=dict(color="#d62728", dash='dash')
+))
+
+# Configurar layout
+fig_dd.update_layout(
+    title=dict(text="Drawdown", font=dict(size=24)),
+    xaxis_title=dict(text="<b>Date</b>", font=dict(size=16)),
+    yaxis_title=dict(text="<b>Drawdown (R$)</b>", font=dict(size=16)),
+    hovermode='x unified',
+    showlegend=True,
+    height=400,
+    template="plotly_white"
+)
+
+st.plotly_chart(fig_dd, use_container_width=True)
+
+# Mostrar métricas do drawdown
+col1, col2 = st.columns(2)
+with col1:
+    max_dd_real = df_real['drawdown'].min()
+    st.metric("Max Drawdown (Real)", f"R$ {max_dd_real:,.2f}")
+with col2:
+    max_dd_backtest = df_backtest['drawdown'].min()
+    st.metric("Max Drawdown (Backtest)", f"R$ {max_dd_backtest:,.2f}")
+
+#################################
+###  4. Performance Diária  ###
+#################################
+
+st.write("## 4. Daily Performance")
+
+# Agrupar trades por dia
+daily_real = df_real.groupby(df_real.index.date)['profit'].sum()
+daily_real.index = pd.to_datetime(daily_real.index)
+
+# Criar figura para performance diária
+fig_daily = go.Figure()
+
+# Adicionar barras
+colors = ['green' if x > 0 else 'red' for x in daily_real.values]
+fig_daily.add_trace(go.Bar(
+    x=daily_real.index,
+    y=daily_real.values,
+    name='Daily P&L',
+    marker_color=colors
+))
+
+# Configurar layout
+fig_daily.update_layout(
+    title=dict(text="Daily Performance", font=dict(size=24)),
+    xaxis_title=dict(text="<b>Date</b>", font=dict(size=16)),
+    yaxis_title=dict(text="<b>Profit/Loss (R$)</b>", font=dict(size=16)),
+    showlegend=False,
+    height=400,
+    template="plotly_white"
+)
+
+st.plotly_chart(fig_daily, use_container_width=True)
+
+#################################
+###  5. Distribuição dos Trades  ###
+#################################
+
+st.write("## 5. Trade Distribution")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    # Histograma dos lucros
+    fig_hist = go.Figure()
+    fig_hist.add_trace(go.Histogram(
+        x=df_real['profit'],
+        nbinsx=30,
+        name='Trade P&L',
+        marker_color='lightblue',
+        marker_line_color='darkblue',
+        marker_line_width=1
     ))
-    figret.add_trace(go.Scatter(
-        x=dft.index,
-        y=dft["cstrategy_2_teo"],
-        name='Backtest',
-        line=dict(color="#d62728")
-    ))
-
-    # adicionando elementos de layout
-    figret.update_layout(
-        title = dict(text="1. Cumulative Return", font=dict(size=27), automargin=False, yref='paper'),
-        xaxis_title= dict(text="<b> Data </b>", font=dict(size=20)),
-        yaxis_title= dict(text="<b>Return (R$) </b>", font=dict(size=20)),
-        font_family="Arial",
-        font_color="black",
-        title_font_family="Arial",
-        title_font_color="black",
-        legend_title_font_color="green",
-        showlegend=True,
-        autosize=False,
-        width=800,
-        height=500,
-        
-        xaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        ),
-        yaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        )
-    )
-
-    # Plot!
-    figret.update_layout(legend_title_text='Legend')
-    st.plotly_chart(figret, use_container_width=True)
-
-else:
     
-    # Plot returns -- all together
-    figret2 = go.Figure()
-    figret2.add_trace(go.Scatter(
-        x=df.index,
-        y=df[f"cstrategy"],
-        name=f'Real'
-    ))
-
-
-    # adicionando elementos de layout
-    figret2.update_layout(
-        title = dict(text="1. Cumulative Return - All together", font=dict(size=27), automargin=False, yref='paper'),
-        xaxis_title= dict(text="<b> Data </b>", font=dict(size=20)),
-        yaxis_title= dict(text="<b>Return (R$) </b>", font=dict(size=20)),
-        font_family="Arial",
-        font_color="black",
-        title_font_family="Arial",
-        title_font_color="black",
-        legend_title_font_color="green",
-        showlegend=True,
-        autosize=False,
-        width=800,
-        height=500,
-        
-        xaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        ),
-        yaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        )
+    fig_hist.update_layout(
+        title="Trade P&L Distribution",
+        xaxis_title="Profit/Loss (R$)",
+        yaxis_title="Frequency",
+        height=350,
+        template="plotly_white"
     )
+    
+    st.plotly_chart(fig_hist, use_container_width=True)
 
-    # Plot!
-    figret2.update_layout(legend_title_text='Legend')
-    st.plotly_chart(figret2, use_container_width=True)
-
-    #### Plot Returns by strategy
-    figret = go.Figure()
-    for i in [2,3,4,5]:
-        figret.add_trace(go.Scatter(
-            x=df.index,
-            y=df[f"cstrategy_{i}"],
-            name=f'Real_{i}'
-        ))
-
-
-    # adicionando elementos de layout
-    figret.update_layout(
-        title = dict(text="1. Cumulative Return - by Strategy", font=dict(size=27), automargin=False, yref='paper'),
-        xaxis_title= dict(text="<b> Data </b>", font=dict(size=20)),
-        yaxis_title= dict(text="<b>Return (R$) </b>", font=dict(size=20)),
-        font_family="Arial",
-        font_color="black",
-        title_font_family="Arial",
-        title_font_color="black",
-        legend_title_font_color="green",
-        showlegend=True,
-        autosize=False,
-        width=800,
-        height=500,
-        
-        xaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        ),
-        yaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        )
+with col2:
+    # Gráfico de pizza para win/loss
+    wins = len(df_real[df_real['profit'] > 0])
+    losses = len(df_real[df_real['profit'] <= 0])
+    
+    fig_pie = go.Figure(data=[go.Pie(
+        labels=['Wins', 'Losses'],
+        values=[wins, losses],
+        hole=.3,
+        marker_colors=['#2ecc71', '#e74c3c']
+    )])
+    
+    fig_pie.update_layout(
+        title="Win/Loss Ratio",
+        height=350,
+        template="plotly_white"
     )
-
-    # Plot!
-    figret.update_layout(legend_title_text='Legend')
-    st.plotly_chart(figret, use_container_width=True)
-
-st.write('As we can see above, the algorithm running on a real account adheres to the backtest results')
-
+    
+    st.plotly_chart(fig_pie, use_container_width=True)
 
 #################################
-###  2. Indices risco/retorno  ###
+###  6. Análise por Hora  ###
 #################################
 
+st.write("## 6. Performance by Hour")
 
-#################################
-###        3. Drawdown        ###
-#################################
+# Criar coluna de hora
+df_real['hour'] = pd.to_datetime(df_real['time_ent']).dt.hour
 
-if strat !='0':
-    # Cálculo do drawdown
-    dfmt5_2['cummax'] = dfmt5_2['cstrategy_2'].cummax()
-    dfmt5_2["dd"] = dfmt5_2['cstrategy_2'] - dfmt5_2['cummax']
-    dfmt5_2["max_dd"] = dfmt5_2["dd"].cummin()
+# Agrupar por hora
+hourly_stats = df_real.groupby('hour').agg({
+    'profit': ['sum', 'count', 'mean']
+}).round(2)
 
-    # Plotando
-    #figdd = px.line(dfmt5_2, x=dfmt5_2.index, y=["dd"])
+# Criar figura
+fig_hourly = go.Figure()
 
-    figdd = go.Figure()
-    figdd.add_trace(go.Scatter(
-        x=dfmt5_2.index,
-        y=dfmt5_2["dd"],
-        name='Real',
-        fill='tozeroy'
-    ))
+# Adicionar barras para lucro total por hora
+fig_hourly.add_trace(go.Bar(
+    x=hourly_stats.index,
+    y=hourly_stats[('profit', 'sum')],
+    name='Total Profit',
+    marker_color='lightblue',
+    yaxis='y'
+))
 
-    figdd.update_layout(
-        title = dict(text="3. Drawdown", font=dict(size=27), automargin=False, yref='paper'),
-        xaxis_title= dict(text="<b> Data </b>", font=dict(size=20)),
-        yaxis_title= dict(text="<b>Drawdown (R$) </b>", font=dict(size=20)),
-        font_family="Arial",
-        font_color="black",
-        title_font_family="Arial",
-        title_font_color="black",
-        legend_title_font_color="green",
-        showlegend=True,
-        autosize=False,
-        width=800,
-        height=500,
-        
-        xaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        ),
-        yaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        )
-    )
+# Adicionar linha para número de trades
+fig_hourly.add_trace(go.Scatter(
+    x=hourly_stats.index,
+    y=hourly_stats[('profit', 'count')],
+    name='Number of Trades',
+    line=dict(color='red', width=2),
+    yaxis='y2'
+))
 
-    # Plot!
-    st.plotly_chart(figdd, use_container_width=True)
+# Configurar layout com dois eixos Y
+fig_hourly.update_layout(
+    title=dict(text="Performance by Hour", font=dict(size=24)),
+    xaxis_title=dict(text="<b>Hour</b>", font=dict(size=16)),
+    yaxis=dict(title="Total Profit (R$)", side='left'),
+    yaxis2=dict(title="Number of Trades", overlaying='y', side='right'),
+    hovermode='x unified',
+    height=400,
+    template="plotly_white"
+)
 
-else:
-    figdd = go.Figure()
-    figdd.add_trace(go.Scatter(
-        x=df.index,
-        y=df["dd"],
-        name='Real',
-        fill='tozeroy'
-    ))
+st.plotly_chart(fig_hourly, use_container_width=True)
 
-    figdd.update_layout(
-        title = dict(text="3. Drawdown", font=dict(size=27), automargin=False, yref='paper'),
-        xaxis_title= dict(text="<b> Data </b>", font=dict(size=20)),
-        yaxis_title= dict(text="<b>Drawdown (R$) </b>", font=dict(size=20)),
-        font_family="Arial",
-        font_color="black",
-        title_font_family="Arial",
-        title_font_color="black",
-        legend_title_font_color="green",
-        showlegend=True,
-        autosize=False,
-        width=800,
-        height=500,
-        
-        xaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        ),
-        yaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        )
-    )
-
-    # Plot!
-    st.plotly_chart(figdd, use_container_width=True)
-
-
-st.write('We can observe a controlled drawdown without many surprises.')
-
-#################################
-###  3. Performance Mensal  ###
-#################################
-
-if strat !='0':
-    # Concat para união do real e teórico
-    df = pd.concat([dfmt5_2[['lucro','cstrategy_2','comment']], dft.iloc[:,2:]], axis =1)
-
-    # Dataframe auxiliar para o plot
-    aux = df.resample('MS').sum()
-    aux = aux[aux['lucro']!=0]
-    aux.rename(columns={'lucro':'Real', 'strategy_2_teo': 'Backtest'}, inplace = True)
-
-    # Plot
-    figd = px.bar(aux, x=aux.index, y=["Real",'Backtest'], barmode='group',
-                color_discrete_sequence=['#1f77b4','#d62728'])
-
-    # adicionando elementos de layout
-    figd.update_layout(
-        title = dict(text="4. Monthly Return", font=dict(size=27), automargin=False, yref='paper'),
-        xaxis_title= dict(text="<b> Data </b>", font=dict(size=20)),
-        yaxis_title= dict(text="<b>Return (R$) </b>", font=dict(size=20)),
-        font_family="Arial",
-        font_color="black",
-        title_font_family="Arial",
-        title_font_color="black",
-        legend_title_font_color="green",
-        showlegend=True,
-        autosize=False,
-        width=800,
-        height=500,
-        
-        xaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        ),
-        yaxis=dict(
-            showline=True,
-            showgrid=True,
-            showticklabels=True,
-            linecolor='white',
-            linewidth=2,
-            ticks='outside',
-            tickfont=dict(
-                family='Arial',
-                size=15,
-                color='black',
-            ),
-        )
-    )
-
-    # Plot!
-    st.plotly_chart(figd, use_container_width=True)
-
-st.write('Again, we can see the good result agreement between the real account result and the \
-          expected backtest result.')
-
-#################################
-###  4. Trades vencedeores/perdedores  ###
-#################################
+# Tabela resumo
+st.write("### Summary Statistics by Hour")
+hourly_display = hourly_stats.copy()
+hourly_display.columns = ['Total Profit (R$)', 'Number of Trades', 'Avg Profit (R$)']
+st.dataframe(hourly_display.style.format({
+    'Total Profit (R$)': 'R$ {:,.2f}',
+    'Avg Profit (R$)': 'R$ {:,.2f}'
+}))
