@@ -60,11 +60,11 @@ st.write(f"**Symbol:** {symbol} | **Timeframe:** {timeframe} | **Magic Number:**
 #################################
 
 # Importar dados de trades reais
-df_real = pd.read_csv(f'bases/results_{symbol}_{timeframe}_{strategy_name}_{magic_number}.csv', 
+df_real = pd.read_csv(f'bases/results_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv', 
                      parse_dates=['time', 'time_ent', 'time_ext'])
 
 # Importar dados de backtest
-df_backtest = pd.read_csv(f'bases/backtest_{symbol}_{timeframe}_{strategy_name}_{magic_number}.csv', 
+df_backtest = pd.read_csv(f'bases/backtest_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv', 
                          index_col=['time'], parse_dates=['time'])
 
 # Processar dados do real
