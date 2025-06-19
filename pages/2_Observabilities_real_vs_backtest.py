@@ -55,11 +55,11 @@ st.write(f"**Symbol:** {symbol} | **Timeframe:** {timeframe} | **Magic:** {magic
 st.write(f"**Default TP:** {tp_points} points | **Default SL:** {sl_points} points")
 
 # Carregar dados reais
-df_real = pd.read_csv(f'bases/results_{symbol}_{timeframe}_{strategy_name}_{magic_number}.csv', 
+df_real = pd.read_csv(f'bases/results_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv', 
                       parse_dates=['time', 'time_ent', 'time_ext'])
 
 # Carregar dados de backtest
-df_backtest = pd.read_csv(f'bases/backtest_{symbol}_{timeframe}_{strategy_name}_{magic_number}.csv', 
+df_backtest = pd.read_csv(f'bases/backtest_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv', 
                           parse_dates=['time'])
 
 # Preparar dados do backtest - filtrar apenas trades
