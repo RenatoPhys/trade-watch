@@ -49,6 +49,15 @@ magic_number = strategy_params['magic_number']
 st.write(f"### Strategy: {strategy_name}")
 st.write(f"**Symbol:** {symbol} | **Timeframe:** {timeframe} | **Magic:** {magic_number}")
 
+# Input para equity inicial
+initial_equity = st.number_input(
+    "Initial Equity (R$)", 
+    min_value=1000.0, 
+    value=10000.0, 
+    step=1000.0,
+    help="Enter the initial capital used in the backtest"
+)
+
 #################################
 ###  Load Backtest Data  ###
 #################################
@@ -60,8 +69,12 @@ df = pd.read_csv(f'bases/full_backtest_{symbol}_{timeframe}_{strategy_name}_magi
 # Ajuste
 df['cstrategy'] = df['cstrategy'].ffill()
 
+# Adicionar equity inicial ao cstrategy para obter equity total
+df['equity'] = df['cstrategy'] + initial_equity
+
 # Calcular métricas derivadas
 df['returns'] = df['cstrategy'].diff()
+df['returns_pct'] = df['equity'].pct_change()  # Retornos percentuais para Sharpe
 df['cummax'] = df['cstrategy'].cummax()
 df['drawdown'] = df['cstrategy'] - df['cummax']
 df['drawdown_pct'] = (df['drawdown'] / df['cummax'] * 100).fillna(0)
@@ -74,17 +87,20 @@ st.write("## 1. Performance Overview")
 
 # Calcular métricas principais
 total_return = df['cstrategy'].iloc[-1]
+total_return_pct = (total_return / initial_equity) * 100
 total_days = (df.index[-1] - df.index[0]).days
 years = total_days / 365.25
 annual_return = (total_return / years) if years > 0 else 0
+annual_return_pct = (annual_return / initial_equity) * 100
 max_drawdown = df['drawdown'].min()
 max_drawdown_pct = df['drawdown_pct'].min()
 
-# Calcular Sharpe Ratio (assumindo 0% de taxa livre de risco)
-daily_returns = df['returns'].dropna()
-sharpe_ratio = np.sqrt(252) * (daily_returns.mean() / daily_returns.std()) if daily_returns.std() > 0 else 0
+# Calcular Sharpe Ratio usando retornos percentuais
+daily_returns_pct = df['returns_pct'].dropna()
+sharpe_ratio = np.sqrt(252) * (daily_returns_pct.mean() / daily_returns_pct.std()) if daily_returns_pct.std() > 0 else 0
 
 # Calcular win rate
+daily_returns = df['returns'].dropna()
 winning_days = len(daily_returns[daily_returns > 0])
 total_trading_days = len(daily_returns[daily_returns != 0])
 win_rate = (winning_days / total_trading_days * 100) if total_trading_days > 0 else 0
@@ -93,8 +109,8 @@ win_rate = (winning_days / total_trading_days * 100) if total_trading_days > 0 e
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("Total Return", f"R$ {total_return:,.2f}")
-    st.metric("Annual Return", f"R$ {annual_return:,.2f}")
+    st.metric("Total Return", f"R$ {total_return:,.2f}", f"{total_return_pct:.1f}%")
+    st.metric("Annual Return", f"R$ {annual_return:,.2f}", f"{annual_return_pct:.1f}%")
 
 with col2:
     st.metric("Max Drawdown", f"R$ {max_drawdown:,.2f}")
@@ -113,8 +129,6 @@ with col4:
 #################################
 
 st.write("## 2. Cumulative Return Analysis")
-
-print(df.head(7))
 
 # Criar figura principal
 fig_return = go.Figure()
@@ -279,10 +293,10 @@ st.write("## 4. Risk Metrics Over Time")
 
 # Calcular métricas rolantes
 window = 252  # 1 ano
-df['rolling_sharpe'] = df['returns'].rolling(window).apply(
+df['rolling_sharpe'] = df['returns_pct'].rolling(window).apply(
     lambda x: np.sqrt(252) * (x.mean() / x.std()) if x.std() > 0 else 0
 )
-df['rolling_volatility'] = df['returns'].rolling(window).std() * np.sqrt(252)
+df['rolling_volatility'] = df['returns_pct'].rolling(window).std() * np.sqrt(252)
 
 # Criar subplots
 fig_risk = go.Figure()
@@ -366,63 +380,91 @@ st.write("## 6. Monte Carlo Simulation")
 n_simulations = 1000
 n_days = 252  # 1 ano
 
-# Obter parâmetros da distribuição
-returns_clean = daily_returns.dropna()
-mu = returns_clean.mean()
-sigma = returns_clean.std()
+# Obter parâmetros da distribuição usando retornos percentuais
+returns_clean = daily_returns_pct.dropna()
+returns_clean = returns_clean[returns_clean != 0]  # Remover dias sem trading
 
-# Realizar simulações
-simulations = np.zeros((n_simulations, n_days))
-for i in range(n_simulations):
-    random_returns = np.random.normal(mu, sigma, n_days)
-    simulations[i] = np.cumprod(1 + random_returns) - 1
+# Verificar se temos dados suficientes
+if len(returns_clean) < 30:
+    st.warning("Insufficient data for Monte Carlo simulation (less than 30 trading days)")
+    simulations = np.zeros((n_simulations, n_days))
+else:
+    mu = returns_clean.mean()
+    sigma = returns_clean.std()
+    
+    # Realizar simulações
+    simulations = np.zeros((n_simulations, n_days))
+    current_value = df['equity'].iloc[-1]
+    
+    for i in range(n_simulations):
+        # Simular retornos diários
+        random_returns = np.random.normal(mu, sigma, n_days)
+        # Calcular caminho cumulativo
+        price_path = current_value * np.cumprod(1 + random_returns)
+        # Guardar o ganho/perda relativo ao valor atual
+        simulations[i] = price_path - current_value
 
 # Calcular percentis
-percentiles = np.percentile(simulations, [5, 25, 50, 75, 95], axis=0)
-
-# Criar gráfico
-fig_mc = go.Figure()
-
-# Adicionar faixa de confiança
-x_days = list(range(n_days))
-fig_mc.add_trace(go.Scatter(
-    x=x_days + x_days[::-1],
-    y=list(percentiles[4] * total_return) + list(percentiles[0][::-1] * total_return),
-    fill='toself',
-    fillcolor='rgba(0,100,200,0.2)',
-    line=dict(color='rgba(255,255,255,0)'),
-    name='90% Confidence Interval'
-))
-
-# Adicionar mediana
-fig_mc.add_trace(go.Scatter(
-    x=x_days,
-    y=percentiles[2] * total_return,
-    line=dict(color='blue', width=2),
-    name='Median Path'
-))
-
-fig_mc.update_layout(
-    title="Monte Carlo Simulation - 1 Year Forward",
-    xaxis_title="Days",
-    yaxis_title="Expected Return (R$)",
-    height=400,
-    template="plotly_white"
-)
-
-st.plotly_chart(fig_mc, use_container_width=True)
-
-# Estatísticas da simulação
-final_values = simulations[:, -1] * total_return
-st.write("### Expected 1-Year Returns (Based on Historical Distribution)")
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("5th Percentile", f"R$ {np.percentile(final_values, 5):,.2f}")
-with col2:
-    st.metric("Median", f"R$ {np.percentile(final_values, 50):,.2f}")
-with col3:
-    st.metric("95th Percentile", f"R$ {np.percentile(final_values, 95):,.2f}")
+if len(returns_clean) >= 30:
+    percentiles = np.percentile(simulations, [5, 25, 50, 75, 95], axis=0)
+    
+    # Criar gráfico
+    fig_mc = go.Figure()
+    
+    # Adicionar faixa de confiança
+    x_days = list(range(n_days))
+    fig_mc.add_trace(go.Scatter(
+        x=x_days + x_days[::-1],
+        y=list(percentiles[4]) + list(percentiles[0][::-1]),
+        fill='toself',
+        fillcolor='rgba(0,100,200,0.2)',
+        line=dict(color='rgba(255,255,255,0)'),
+        name='90% Confidence Interval'
+    ))
+    
+    # Adicionar mediana
+    fig_mc.add_trace(go.Scatter(
+        x=x_days,
+        y=percentiles[2],
+        line=dict(color='blue', width=2),
+        name='Median Path'
+    ))
+    
+    # Adicionar linha zero
+    fig_mc.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+    
+    fig_mc.update_layout(
+        title="Monte Carlo Simulation - 1 Year Forward",
+        xaxis_title="Days",
+        yaxis_title="Expected Return (R$)",
+        height=400,
+        template="plotly_white"
+    )
+    
+    st.plotly_chart(fig_mc, use_container_width=True)
+    
+    # Estatísticas da simulação
+    final_values = simulations[:, -1]
+    st.write("### Expected 1-Year Returns (Based on Historical Distribution)")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("5th Percentile", f"R$ {np.percentile(final_values, 5):,.2f}")
+    with col2:
+        st.metric("Median", f"R$ {np.percentile(final_values, 50):,.2f}")
+    with col3:
+        st.metric("95th Percentile", f"R$ {np.percentile(final_values, 95):,.2f}")
+    
+    # Probabilidades
+    prob_positive = (final_values > 0).sum() / len(final_values) * 100
+    prob_double = (final_values > total_return).sum() / len(final_values) * 100
+    
+    st.write("**Probabilities:**")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Probability of Profit", f"{prob_positive:.1f}%")
+    with col2:
+        st.metric("Probability of Doubling Current Return", f"{prob_double:.1f}%")
 
 #################################
 ###  7. Summary Statistics  ###
@@ -432,12 +474,13 @@ st.write("## 7. Summary Statistics")
 
 # Criar tabela resumo
 summary_stats = {
-    'Metric': ['Total Return', 'Annual Return', 'Monthly Avg Return', 'Daily Avg Return',
+    'Metric': ['Initial Equity', 'Total Return', 'Annual Return', 'Monthly Avg Return', 'Daily Avg Return',
                'Max Drawdown', 'Max DD Duration', 'Sharpe Ratio', 'Sortino Ratio',
                'Win Rate', 'Best Day', 'Worst Day', 'Volatility (Annual)'],
     'Value': [
-        f"R$ {total_return:,.2f}",
-        f"R$ {annual_return:,.2f}",
+        f"R$ {initial_equity:,.2f}",
+        f"R$ {total_return:,.2f} ({total_return_pct:.1f}%)",
+        f"R$ {annual_return:,.2f} ({annual_return_pct:.1f}%)",
         f"R$ {monthly_returns.mean():,.2f}" if len(monthly_returns) > 0 else "N/A",
         f"R$ {daily_returns.mean():,.2f}",
         f"R$ {max_drawdown:,.2f} ({max_drawdown_pct:.1f}%)",
@@ -447,7 +490,7 @@ summary_stats = {
         f"{win_rate:.1f}%",
         f"R$ {daily_returns.max():,.2f}",
         f"R$ {daily_returns.min():,.2f}",
-        f"{daily_returns.std() * np.sqrt(252):.2f}"
+        f"{daily_returns_pct.std() * np.sqrt(252):.2%}" if daily_returns_pct.std() > 0 else "N/A"
     ]
 }
 
@@ -460,8 +503,8 @@ st.write("### Key Insights")
 insights = f"""
 Based on the backtest analysis:
 
-1. **Performance**: The strategy generated R$ {total_return:,.2f} over {years:.1f} years, 
-   averaging R$ {annual_return:,.2f} per year.
+1. **Performance**: The strategy generated R$ {total_return:,.2f} ({total_return_pct:.1f}% return) over {years:.1f} years, 
+   averaging R$ {annual_return:,.2f} ({annual_return_pct:.1f}%) per year.
 
 2. **Risk**: Maximum drawdown was R$ {max_drawdown:,.2f} ({max_drawdown_pct:.1f}%), 
    with a Sharpe ratio of {sharpe_ratio:.2f}.
