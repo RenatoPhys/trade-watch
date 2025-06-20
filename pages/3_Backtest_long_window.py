@@ -114,6 +114,8 @@ with col4:
 
 st.write("## 2. Cumulative Return Analysis")
 
+print(df.head(7))
+
 # Criar figura principal
 fig_return = go.Figure()
 
