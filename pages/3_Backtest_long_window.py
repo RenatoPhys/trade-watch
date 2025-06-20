@@ -54,7 +54,7 @@ st.write(f"**Symbol:** {symbol} | **Timeframe:** {timeframe} | **Magic:** {magic
 #################################
 
 # Carregar dados de backtest completo
-df = pd.read_csv(f'bases/backtest_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv', 
+df = pd.read_csv(f'bases/full_backtest_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv', 
                  index_col=['time'], parse_dates=['time'])
 
 # Calcular métricas derivadas
