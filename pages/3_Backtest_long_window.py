@@ -9,6 +9,8 @@ import plotly.express as px
 import streamlit as st
 import json
 from datetime import datetime
+import glob
+import os
 
 #################################
 ###       Preâmbulo       ###
@@ -33,21 +35,53 @@ st.markdown('''
         ''')
 
 #################################
-###  0. Load Configuration  ###
+###  0. Strategy Selection  ###
 #################################
 
-# Carregar configuração da estratégia
-with open('combined_strategy_teste.json', 'r') as f:
-    strategy_params = json.load(f)
+# Encontrar todos os arquivos JSON de estratégia
+strategy_files = glob.glob('combined_strategy_*.json')
+strategy_names = {}
 
-symbol = strategy_params['symbol']
-timeframe = strategy_params['timeframe']
-strategy_name = strategy_params['strategy']
-magic_number = strategy_params['magic_number']
+# Carregar informações básicas de cada estratégia
+for file in strategy_files:
+    with open(file, 'r') as f:
+        data = json.load(f)
+        # Criar nome descritivo para a estratégia
+        name = f"{data['strategy']} - {data['symbol']} ({data['timeframe']}) - Magic: {data['magic_number']}"
+        strategy_names[name] = file
 
-# Mostrar informações da estratégia
-st.write(f"### Strategy: {strategy_name}")
-st.write(f"**Symbol:** {symbol} | **Timeframe:** {timeframe} | **Magic:** {magic_number}")
+# Seleção de modo
+mode = st.radio(
+    "Select Analysis Mode:",
+    ["Single Strategy", "Combined Strategies"],
+    horizontal=True
+)
+
+selected_strategies = []
+
+if mode == "Single Strategy":
+    # Dropdown para seleção única
+    selected_name = st.selectbox(
+        "Select Strategy:",
+        options=list(strategy_names.keys())
+    )
+    if selected_name:
+        selected_strategies = [strategy_names[selected_name]]
+else:
+    # Multiselect para combinação
+    st.write("**Select strategies to combine:**")
+    
+    # Criar checkboxes para cada estratégia
+    cols = st.columns(2)
+    for idx, (name, file) in enumerate(strategy_names.items()):
+        col_idx = idx % 2
+        with cols[col_idx]:
+            if st.checkbox(name, key=f"strategy_{idx}"):
+                selected_strategies.append(file)
+    
+    if not selected_strategies:
+        st.warning("Please select at least one strategy to analyze.")
+        st.stop()
 
 # Input para equity inicial
 initial_equity = st.number_input(
@@ -59,25 +93,82 @@ initial_equity = st.number_input(
 )
 
 #################################
-###  Load Backtest Data  ###
+###  Load and Combine Data  ###
 #################################
 
-# Carregar dados de backtest completo
-df = pd.read_csv(f'bases/full_backtest_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv', 
-                 index_col=['time'], parse_dates=['time'])
+# Função para carregar dados de uma estratégia
+@st.cache_data
+def load_strategy_data(strategy_file):
+    with open(strategy_file, 'r') as f:
+        params = json.load(f)
+    
+    # Construir nome do arquivo CSV
+    csv_file = f"bases/full_backtest_{params['symbol']}_{params['timeframe']}_{params['strategy']}_magic_{params['magic_number']}.csv"
+    
+    # Verificar se o arquivo existe
+    if not os.path.exists(csv_file):
+        st.error(f"Backtest file not found: {csv_file}")
+        return None, params
+    
+    # Carregar dados
+    df = pd.read_csv(csv_file, index_col=['time'], parse_dates=['time'])
+    df['cstrategy'] = df['cstrategy'].ffill()
+    
+    return df, params
 
-# Ajuste
-df['cstrategy'] = df['cstrategy'].ffill()
+# Carregar dados de todas as estratégias selecionadas
+all_data = []
+all_params = []
+
+for strategy_file in selected_strategies:
+    df, params = load_strategy_data(strategy_file)
+    if df is not None:
+        all_data.append(df)
+        all_params.append(params)
+
+if not all_data:
+    st.error("No valid backtest data found for selected strategies.")
+    st.stop()
+
+# Combinar dados se múltiplas estratégias
+if len(all_data) == 1:
+    # Estratégia única
+    df = all_data[0]
+    strategy_info = f"{all_params[0]['strategy']} - {all_params[0]['symbol']}"
+else:
+    # Combinar múltiplas estratégias
+    # Alinhar todos os DataFrames pelo índice de tempo
+    combined_returns = pd.DataFrame()
+    
+    for i, (data, params) in enumerate(zip(all_data, all_params)):
+        # Calcular retornos diários
+        daily_returns = data['cstrategy'].diff().fillna(0)
+        combined_returns[f"strategy_{i}"] = daily_returns
+    
+    # Somar retornos de todas as estratégias
+    df = pd.DataFrame(index=combined_returns.index)
+    df['cstrategy'] = combined_returns.sum(axis=1).cumsum()
+    
+    strategy_info = f"Combined ({len(all_data)} strategies)"
 
 # Adicionar equity inicial ao cstrategy para obter equity total
 df['equity'] = df['cstrategy'] + initial_equity
 
 # Calcular métricas derivadas
 df['returns'] = df['cstrategy'].diff()
-df['returns_pct'] = df['equity'].pct_change()  # Retornos percentuais para Sharpe
+df['returns_pct'] = df['equity'].pct_change()
 df['cummax'] = df['cstrategy'].cummax()
 df['drawdown'] = df['cstrategy'] - df['cummax']
 df['drawdown_pct'] = (df['drawdown'] / df['cummax'] * 100).fillna(0)
+
+# Mostrar informações da estratégia
+st.write(f"### Analyzing: {strategy_info}")
+
+if len(all_data) > 1:
+    # Mostrar detalhes das estratégias combinadas
+    with st.expander("Combined Strategies Details"):
+        for params in all_params:
+            st.write(f"- **{params['strategy']}** on {params['symbol']} ({params['timeframe']}) - Magic: {params['magic_number']}")
 
 #################################
 ###  1. Overview Metrics  ###
@@ -95,7 +186,7 @@ annual_return_pct = (annual_return / initial_equity) * 100
 max_drawdown = df['drawdown'].min()
 max_drawdown_pct = df['drawdown_pct'].min()
 
-# Calcular Sharpe Ratio usando retornos percentuais
+# Calcular Sharpe Ratio
 daily_returns_pct = df['returns_pct'].dropna()
 sharpe_ratio = np.sqrt(252) * (daily_returns_pct.mean() / daily_returns_pct.std()) if daily_returns_pct.std() > 0 else 0
 
@@ -133,14 +224,30 @@ st.write("## 2. Cumulative Return Analysis")
 # Criar figura principal
 fig_return = go.Figure()
 
-# Adicionar linha de retorno acumulado
+# Se múltiplas estratégias, mostrar contribuição individual
+if len(all_data) > 1:
+    # Adicionar linhas individuais
+    cumsum = pd.DataFrame()
+    for i, (data, params) in enumerate(zip(all_data, all_params)):
+        returns = data['cstrategy'].diff().fillna(0)
+        cumsum[f"strategy_{i}"] = returns.cumsum()
+        
+        fig_return.add_trace(go.Scatter(
+            x=data.index,
+            y=cumsum[f"strategy_{i}"],
+            name=f"{params['strategy']} - {params['symbol']}",
+            line=dict(width=1),
+            opacity=0.7
+        ))
+
+# Adicionar linha de retorno acumulado total
 fig_return.add_trace(go.Scatter(
     x=df.index,
     y=df['cstrategy'],
-    name='Cumulative Return',
-    line=dict(color='#1f77b4', width=2),
-    fill='tozeroy',
-    fillcolor='rgba(31, 119, 180, 0.1)'
+    name='Total Cumulative Return',
+    line=dict(color='#1f77b4', width=3),
+    fill='tozeroy' if len(all_data) == 1 else None,
+    fillcolor='rgba(31, 119, 180, 0.1)' if len(all_data) == 1 else None
 ))
 
 # Adicionar linha de tendência
@@ -371,6 +478,47 @@ st.dataframe(annual_summary.style.format({
 }))
 
 #################################
+### 6. Strategy Comparison  ###
+#################################
+
+if len(all_data) > 1:
+    st.write("## 6. Individual Strategy Performance")
+    
+    # Calcular métricas individuais
+    strategy_metrics = []
+    
+    for i, (data, params) in enumerate(zip(all_data, all_params)):
+        returns = data['cstrategy'].diff().fillna(0)
+        total_ret = data['cstrategy'].iloc[-1]
+        
+        # Sharpe individual
+        ret_pct = (data['cstrategy'] + initial_equity/len(all_data)).pct_change().dropna()
+        sharpe = np.sqrt(252) * (ret_pct.mean() / ret_pct.std()) if ret_pct.std() > 0 else 0
+        
+        # Win rate individual
+        wins = len(returns[returns > 0])
+        trades = len(returns[returns != 0])
+        wr = (wins / trades * 100) if trades > 0 else 0
+        
+        strategy_metrics.append({
+            'Strategy': f"{params['strategy']} - {params['symbol']}",
+            'Total Return': total_ret,
+            'Return %': (total_ret / (initial_equity/len(all_data))) * 100,
+            'Sharpe Ratio': sharpe,
+            'Win Rate': wr,
+            'Max DD': returns.cumsum().cummax().sub(returns.cumsum()).min()
+        })
+    
+    metrics_df = pd.DataFrame(strategy_metrics)
+    st.dataframe(metrics_df.style.format({
+        'Total Return': 'R$ {:,.2f}',
+        'Return %': '{:.1f}%',
+        'Sharpe Ratio': '{:.2f}',
+        'Win Rate': '{:.1f}%',
+        'Max DD': 'R$ {:,.2f}'
+    }))
+
+#################################
 ###  7. Summary Statistics  ###
 #################################
 
@@ -404,10 +552,16 @@ st.table(summary_df)
 # Insights finais
 st.write("### Key Insights")
 
+# Personalizar insights baseado no modo
+if len(all_data) == 1:
+    strategy_text = f"The {all_params[0]['strategy']} strategy"
+else:
+    strategy_text = f"The combined portfolio of {len(all_data)} strategies"
+
 insights = f"""
 Based on the backtest analysis:
 
-1. **Performance**: The strategy generated R$ {total_return:,.2f} ({total_return_pct:.1f}% return) over {years:.1f} years, 
+1. **Performance**: {strategy_text} generated R$ {total_return:,.2f} ({total_return_pct:.1f}% return) over {years:.1f} years, 
    averaging R$ {annual_return:,.2f} ({annual_return_pct:.1f}%) per year.
 
 2. **Risk**: Maximum drawdown was R$ {max_drawdown:,.2f} ({max_drawdown_pct:.1f}%), 
