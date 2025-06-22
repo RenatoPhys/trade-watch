@@ -1,0 +1,88 @@
+{
+    "symbol": "WIN@N",
+    "timeframe": "t5",
+    "strategy": "pattern_rsi_trend",
+    "hours": [
+        10,
+        11,
+        12,
+        13,
+        16,
+        17
+    ],
+    "hour_params": {
+        "10": {
+            "length_rsi": 9.0,
+            "rsi_low": 26.0,
+            "rsi_high": 74.0,
+            "position_type": "both",
+            "allowed_hours": [
+                10
+            ],
+            "tp": 1400,
+            "sl": 600
+        },
+        "11": {
+            "length_rsi": 9.0,
+            "rsi_low": 26.0,
+            "rsi_high": 74.0,
+            "position_type": "both",
+            "allowed_hours": [
+                11
+            ],
+            "tp": 1400,
+            "sl": 600
+        },
+        "12": {
+            "length_rsi": 9.0,
+            "rsi_low": 26.0,
+            "rsi_high": 74.0,
+            "position_type": "both",
+            "allowed_hours": [
+                12
+            ],
+            "tp": 1400,
+            "sl": 600
+        },
+        "13": {
+            "length_rsi": 9.0,
+            "rsi_low": 26.0,
+            "rsi_high": 74.0,
+            "position_type": "both",
+            "allowed_hours": [
+                13
+            ],
+            "tp": 1400,
+            "sl": 600
+        },
+        "16": {
+            "length_rsi": 9.0,
+            "rsi_low": 26.0,
+            "rsi_high": 74.0,
+            "position_type": "both",
+            "allowed_hours": [
+                16
+            ],
+            "tp": 1400,
+            "sl": 600
+        },
+        "17": {
+            "length_rsi": 9.0,
+            "rsi_low": 26.0,
+            "rsi_high": 74.0,
+            "position_type": "both",
+            "allowed_hours": [
+                17
+            ],
+            "tp": 1400,
+            "sl": 600
+        }
+    },
+    "tc": 0.2,
+    "valor_lote": 0.2,
+    "lote": 1.0,    
+    "daytrade": true,
+    "magic_number": 1111,
+    "optimize_metric": "sortino_ratio",
+    "direction": "maximize"
+}

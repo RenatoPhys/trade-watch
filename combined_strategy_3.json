@@ -1,0 +1,60 @@
+{
+    "symbol": "WIN@N",
+    "timeframe": "t5",
+    "strategy": "bb_trend",
+    "hours": [
+        10,
+        11,
+        12,
+        13
+    ],
+    "hour_params": {
+        "10": {
+            "bb_length": 9,
+            "std": 1.45,
+            "position_type": "both",
+            "allowed_hours": [
+                10
+            ],
+            "tp": 1480.0,
+            "sl": 1650.0
+        },
+        "11": {
+            "bb_length": 9,
+            "std": 1.45,
+            "position_type": "both",
+            "allowed_hours": [
+                11
+            ],
+            "tp": 1480.0,
+            "sl": 1650.0
+        },
+        "12": {
+            "bb_length": 9,
+            "std": 1.45,
+            "position_type": "both",
+            "allowed_hours": [
+                12
+            ],
+            "tp": 1480.0,
+            "sl": 1650.0
+        },
+        "13": {
+            "bb_length": 9,
+            "std": 1.45,
+            "position_type": "both",
+            "allowed_hours": [
+                13
+            ],
+            "tp": 1480.0,
+            "sl": 1650.0
+        }
+    },
+    "tc": 1.0,
+    "lote": 1,
+    "valor_lote": 0.2,
+    "daytrade": true,
+    "magic_number": 9783,
+    "optimize_metric": "calmar_ratio",
+    "direction": "maximize"
+}

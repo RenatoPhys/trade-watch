@@ -1,0 +1,112 @@
+{
+    "symbol": "WIN@N",
+    "timeframe": "t5",
+    "strategy": "gold_rsi_trend",
+    "hours": [
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+    ],
+    "hour_params": {
+        "10": {
+            "length_rsi": 10.0,
+            "rsi_low": 30.0,
+            "rsi_high": 70.0,
+            "position_type": "both",
+            "allowed_hours": [
+                10
+            ],
+            "tp": 550,
+            "sl": 350
+        },
+        "11": {
+            "length_rsi": 4.0,
+            "rsi_low": 21.0,
+            "rsi_high": 69.0,
+            "position_type": "both",
+            "allowed_hours": [
+                11
+            ],
+            "tp": 1500,
+            "sl": 610
+        },
+        "12": {
+            "length_rsi": 10.0,
+            "rsi_low": 30.0,
+            "rsi_high": 70.0,
+            "position_type": "both",
+            "allowed_hours": [
+                12
+            ],
+            "tp": 550,
+            "sl": 350
+        },
+        "13": {
+            "length_rsi": 10.0,
+            "rsi_low": 30.0,
+            "rsi_high": 70.0,
+            "position_type": "both",
+            "allowed_hours": [
+                13
+            ],
+            "tp": 550,
+            "sl": 350
+        },
+        "14": {
+            "length_rsi": 10.0,
+            "rsi_low": 30.0,
+            "rsi_high": 70.0,
+            "position_type": "both",
+            "allowed_hours": [
+                14
+            ],
+            "tp": 550,
+            "sl": 350
+        },
+        "15": {
+            "length_rsi": 10.0,
+            "rsi_low": 30.0,
+            "rsi_high": 70.0,
+            "position_type": "both",
+            "allowed_hours": [
+                15
+            ],
+            "tp": 550,
+            "sl": 350
+        },
+        "16": {
+            "length_rsi": 10.0,
+            "rsi_low": 30.0,
+            "rsi_high": 70.0,
+            "position_type": "both",
+            "allowed_hours": [
+                16
+            ],
+            "tp": 550,
+            "sl": 350
+        },
+        "17": {
+            "length_rsi": 10.0,
+            "rsi_low": 30.0,
+            "rsi_high": 70.0,
+            "position_type": "both",
+            "allowed_hours": [
+                17
+            ],
+            "tp": 550,
+            "sl": 350
+        }
+    },
+    "tc": 0.2,
+    "valor_lote": 0.2,
+    "lote": 1.0,    
+    "daytrade": true,
+    "magic_number": 3598,
+    "optimize_metric": "sortino_ratio",
+    "direction": "maximize"
+}

@@ -1,0 +1,60 @@
+{
+    "symbol": "WDO@N",
+    "timeframe": "t5",
+    "strategy": "bb_anti_trend",
+    "hours": [
+        12,
+        13,
+        15,
+        16
+    ],
+    "hour_params": {
+        "12": {
+            "bb_length": 4,
+            "std": 1.10,
+            "position_type": "long",
+            "allowed_hours": [
+                12
+            ],
+            "tp": 8.0,
+            "sl": 14.0
+        },
+        "13": {
+            "bb_length": 4,
+            "std": 1.10,
+            "position_type": "long",
+            "allowed_hours": [
+                13
+            ],
+            "tp": 8.0,
+            "sl": 14.0
+        },
+        "15": {
+            "bb_length": 4,
+            "std": 1.10,
+            "position_type": "long",
+            "allowed_hours": [
+                15
+            ],
+            "tp": 8.0,
+            "sl": 14.0
+        },
+        "16": {
+            "bb_length": 8,
+            "std": 1.58,
+            "position_type": "long",
+            "allowed_hours": [
+                16
+            ],
+            "tp": 3.0,
+            "sl": 10.0
+        }
+    },
+    "tc": 1.0,
+    "lote": 1,
+    "valor_lote": 0.2,
+    "daytrade": true,
+    "magic_number": 3443,
+    "optimize_metric": "calmar_ratio",
+    "direction": "maximize"
+}

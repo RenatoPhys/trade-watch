@@ -1,0 +1,64 @@
+{
+    "symbol": "WDO@N",
+    "timeframe": "t5",
+    "strategy": "gold_rsi_trend",
+    "hours": [
+        10,
+        11,
+        14,
+        15
+    ],
+    "hour_params": {
+        "10": {
+            "length_rsi": 4.0,
+            "rsi_low": 22.0,
+            "rsi_high": 68.0,
+            "position_type": "both",
+            "allowed_hours": [
+                10
+            ],
+            "tp": 20,
+            "sl": 16
+        },
+        "11": {
+            "length_rsi": 4.0,
+            "rsi_low": 22.0,
+            "rsi_high": 68.0,
+            "position_type": "both",
+            "allowed_hours": [
+                11
+            ],
+            "tp": 20,
+            "sl": 16
+        },
+        "14": {
+            "length_rsi": 8.0,
+            "rsi_low": 28.0,
+            "rsi_high": 73.0,
+            "position_type": "both",
+            "allowed_hours": [
+                14
+            ],
+            "tp": 8,
+            "sl": 18
+        },
+        "15": {
+            "length_rsi": 11.0,
+            "rsi_low": 38.0,
+            "rsi_high": 62.0,
+            "position_type": "long",
+            "allowed_hours": [
+                14
+            ],
+            "tp": 23,
+            "sl": 31
+        }
+    },
+    "tc": 0.2,
+    "valor_lote": 0.2,
+    "lote": 1.0,    
+    "daytrade": true,
+    "magic_number": 1212,
+    "optimize_metric": "sortino_ratio",
+    "direction": "maximize"
+}
