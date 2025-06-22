@@ -155,11 +155,13 @@ else:
 df['equity'] = df['cstrategy'] + initial_equity
 
 # Calcular métricas derivadas
-df['returns'] = df['cstrategy'].diff()
-df['returns_pct'] = df['equity'].pct_change()
-df['cummax'] = df['cstrategy'].cummax()
-df['drawdown'] = df['cstrategy'] - df['cummax']
-df['drawdown_pct'] = (df['drawdown'] / df['cummax'] * 100).fillna(0)
+df['returns'] = df['cstrategy'].diff().fillna(0)
+df['returns_pct'] = df['returns'] / initial_equity  # Retorno percentual baseado no capital inicial
+
+# Calcular drawdown corretamente
+df['equity_cummax'] = df['equity'].cummax()
+df['drawdown'] = df['equity'] - df['equity_cummax']
+df['drawdown_pct'] = (df['drawdown'] / df['equity_cummax'] * 100)
 
 # Mostrar informações da estratégia
 st.write(f"### Analyzing: {strategy_info}")
@@ -186,9 +188,12 @@ annual_return_pct = (annual_return / initial_equity) * 100
 max_drawdown = df['drawdown'].min()
 max_drawdown_pct = df['drawdown_pct'].min()
 
-# Calcular Sharpe Ratio
+# Calcular Sharpe Ratio corretamente
 daily_returns_pct = df['returns_pct'].dropna()
-sharpe_ratio = np.sqrt(252) * (daily_returns_pct.mean() / daily_returns_pct.std()) if daily_returns_pct.std() > 0 else 0
+if len(daily_returns_pct) > 1 and daily_returns_pct.std() > 0:
+    sharpe_ratio = np.sqrt(252) * (daily_returns_pct.mean() / daily_returns_pct.std())
+else:
+    sharpe_ratio = 0
 
 # Calcular win rate
 daily_returns = df['returns'].dropna()
@@ -371,7 +376,7 @@ for idx, row in df.iterrows():
     if row['drawdown'] < 0 and not in_dd:
         in_dd = True
         start_dd = idx
-    elif row['drawdown'] == 0 and in_dd:
+    elif row['drawdown'] >= -0.01 and in_dd:  # Pequena tolerância para drawdown zero
         in_dd = False
         if start_dd:
             duration = (idx - start_dd).days
@@ -400,10 +405,13 @@ st.write("## 4. Risk Metrics Over Time")
 
 # Calcular métricas rolantes
 window = 252  # 1 ano
-df['rolling_sharpe'] = df['returns_pct'].rolling(window).apply(
-    lambda x: np.sqrt(252) * (x.mean() / x.std()) if x.std() > 0 else 0
-)
+df['rolling_returns_pct'] = df['returns'].rolling(window).sum() / initial_equity
 df['rolling_volatility'] = df['returns_pct'].rolling(window).std() * np.sqrt(252)
+
+# Calcular Sharpe rolante
+df['rolling_sharpe'] = df['returns_pct'].rolling(window).apply(
+    lambda x: np.sqrt(252) * (x.mean() / x.std()) if len(x) > 1 and x.std() > 0 else 0
+)
 
 # Criar subplots
 fig_risk = go.Figure()
@@ -444,7 +452,12 @@ annual_summary = df.groupby('year').agg({
 }).round(2)
 
 annual_summary.columns = ['Total Return', 'Volatility', 'Trading Days', 'Max Drawdown']
-annual_summary['Sharpe'] = (annual_summary['Total Return'] / annual_summary['Volatility'] / np.sqrt(annual_summary['Trading Days'])) * np.sqrt(252)
+
+# Calcular Sharpe anual corretamente
+annual_summary['Sharpe'] = annual_summary.apply(
+    lambda row: (row['Total Return'] / initial_equity) / (row['Volatility'] / initial_equity * np.sqrt(row['Trading Days'])) * np.sqrt(252) 
+    if row['Volatility'] > 0 and row['Trading Days'] > 0 else 0, axis=1
+)
 
 # Gráfico de barras anuais
 fig_annual = go.Figure()
@@ -473,7 +486,7 @@ st.write("### Annual Performance Summary")
 st.dataframe(annual_summary.style.format({
     'Total Return': 'R$ {:,.2f}',
     'Max Drawdown': 'R$ {:,.2f}',
-    'Volatility': '{:.2f}',
+    'Volatility': 'R$ {:,.2f}',
     'Sharpe': '{:.2f}'
 }))
 
@@ -492,7 +505,7 @@ if len(all_data) > 1:
         total_ret = data['cstrategy'].iloc[-1]
         
         # Sharpe individual
-        ret_pct = (data['cstrategy'] + initial_equity/len(all_data)).pct_change().dropna()
+        ret_pct = returns / (initial_equity/len(all_data))
         sharpe = np.sqrt(252) * (ret_pct.mean() / ret_pct.std()) if ret_pct.std() > 0 else 0
         
         # Win rate individual
@@ -518,7 +531,6 @@ if len(all_data) > 1:
         'Max DD': 'R$ {:,.2f}'
     }))
 
-
 #################################
 ### 6.5 Strategy Correlation  ###
 #################################
@@ -538,66 +550,73 @@ if len(all_data) > 1:
     # Alinhar índices
     weekly_returns = weekly_returns.dropna()
     
-    # Calcular matriz de correlação
-    correlation_matrix = weekly_returns.corr()
-    
-    # Criar heatmap de correlação
-    fig_corr = go.Figure(data=go.Heatmap(
-        z=correlation_matrix.values,
-        x=correlation_matrix.columns,
-        y=correlation_matrix.columns,
-        colorscale='RdBu',
-        zmid=0,
-        text=correlation_matrix.round(2).values,
-        texttemplate='%{text}',
-        textfont={"size": 10},
-        colorbar=dict(title="Correlation")
-    ))
-    
-    fig_corr.update_layout(
-        title="Weekly Returns Correlation Matrix",
-        height=500,
-        width=700,
-        xaxis_title="",
-        yaxis_title="",
-        template="plotly_white"
-    )
-    
-    st.plotly_chart(fig_corr, use_container_width=True)
-    
-    # Estatísticas de correlação
-    st.write("### Correlation Statistics")
-    
-    # Extrair correlações únicas (triangular superior)
-    mask = np.triu(np.ones_like(correlation_matrix, dtype=bool), k=1)
-    upper_corr = correlation_matrix.where(mask)
-    
-    corr_values = upper_corr.values[mask]
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Average Correlation", f"{corr_values.mean():.3f}")
-    with col2:
-        st.metric("Max Correlation", f"{corr_values.max():.3f}")
-    with col3:
-        st.metric("Min Correlation", f"{corr_values.min():.3f}")
-    
-    # Aviso sobre diversificação
-    avg_corr = corr_values.mean()
-    if avg_corr > 0.7:
-        st.warning("⚠️ High average correlation detected. Strategies may not provide sufficient diversification.")
-    elif avg_corr < 0.3:
-        st.success("✅ Low correlation between strategies. Good diversification potential.")
-    else:
-        st.info("ℹ️ Moderate correlation between strategies.")
+    if len(weekly_returns) > 1:
+        # Calcular matriz de correlação
+        correlation_matrix = weekly_returns.corr()
         
+        # Criar heatmap de correlação
+        fig_corr = go.Figure(data=go.Heatmap(
+            z=correlation_matrix.values,
+            x=correlation_matrix.columns,
+            y=correlation_matrix.columns,
+            colorscale='RdBu',
+            zmid=0,
+            text=correlation_matrix.round(2).values,
+            texttemplate='%{text}',
+            textfont={"size": 10},
+            colorbar=dict(title="Correlation")
+        ))
+        
+        fig_corr.update_layout(
+            title="Weekly Returns Correlation Matrix",
+            height=500,
+            width=700,
+            xaxis_title="",
+            yaxis_title="",
+            template="plotly_white"
+        )
+        
+        st.plotly_chart(fig_corr, use_container_width=True)
+        
+        # Estatísticas de correlação
+        st.write("### Correlation Statistics")
+        
+        # Extrair correlações únicas (triangular superior)
+        mask = np.triu(np.ones_like(correlation_matrix, dtype=bool), k=1)
+        upper_corr = correlation_matrix.where(mask)
+        
+        corr_values = upper_corr.values[mask]
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Average Correlation", f"{corr_values.mean():.3f}")
+        with col2:
+            st.metric("Max Correlation", f"{corr_values.max():.3f}")
+        with col3:
+            st.metric("Min Correlation", f"{corr_values.min():.3f}")
+        
+        # Aviso sobre diversificação
+        avg_corr = corr_values.mean()
+        if avg_corr > 0.7:
+            st.warning("⚠️ High average correlation detected. Strategies may not provide sufficient diversification.")
+        elif avg_corr < 0.3:
+            st.success("✅ Low correlation between strategies. Good diversification potential.")
+        else:
+            st.info("ℹ️ Moderate correlation between strategies.")
 
 #################################
 ###  7. Summary Statistics  ###
 #################################
 
 st.write("## 7. Summary Statistics")
+
+# Calcular Sortino Ratio
+negative_returns = daily_returns[daily_returns < 0]
+if len(negative_returns) > 0:
+    sortino_ratio = np.sqrt(252) * (daily_returns_pct.mean() / (negative_returns / initial_equity).std())
+else:
+    sortino_ratio = np.nan
 
 # Criar tabela resumo
 summary_stats = {
@@ -613,7 +632,7 @@ summary_stats = {
         f"R$ {max_drawdown:,.2f} ({max_drawdown_pct:.1f}%)",
         f"{max([p['Duration (days)'] for p in dd_periods])} days" if dd_periods else "N/A",
         f"{sharpe_ratio:.2f}",
-        f"{np.sqrt(252) * (daily_returns[daily_returns > 0].mean() / daily_returns[daily_returns < 0].std()):.2f}" if len(daily_returns[daily_returns < 0]) > 0 else "N/A",
+        f"{sortino_ratio:.2f}" if not np.isnan(sortino_ratio) else "N/A",
         f"{win_rate:.1f}%",
         f"R$ {daily_returns.max():,.2f}",
         f"R$ {daily_returns.min():,.2f}",
