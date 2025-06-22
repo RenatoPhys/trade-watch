@@ -16,7 +16,7 @@ import os
 ###       Preâmbulo       ###
 #################################
 
-st.write("# Long-Term Backtest Analysis")
+st.write("# Long-Term Backtest Analysis ")
 
 st.write("#### Comprehensive backtest performance analysis over extended periods")
 
