@@ -518,6 +518,81 @@ if len(all_data) > 1:
         'Max DD': 'R$ {:,.2f}'
     }))
 
+
+#################################
+### 6.5 Strategy Correlation  ###
+#################################
+
+if len(all_data) > 1:
+    st.write("## 6.5 Strategy Correlation Analysis")
+    
+    # Calcular retornos semanais para cada estratégia
+    weekly_returns = pd.DataFrame()
+    
+    for i, (data, params) in enumerate(zip(all_data, all_params)):
+        # Retornos absolutos semanais
+        strategy_name = f"{params['strategy']} - {params['symbol']}"
+        weekly_ret = data['cstrategy'].resample('W').last().diff().fillna(0)
+        weekly_returns[strategy_name] = weekly_ret
+    
+    # Alinhar índices
+    weekly_returns = weekly_returns.dropna()
+    
+    # Calcular matriz de correlação
+    correlation_matrix = weekly_returns.corr()
+    
+    # Criar heatmap de correlação
+    fig_corr = go.Figure(data=go.Heatmap(
+        z=correlation_matrix.values,
+        x=correlation_matrix.columns,
+        y=correlation_matrix.columns,
+        colorscale='RdBu',
+        zmid=0,
+        text=correlation_matrix.round(2).values,
+        texttemplate='%{text}',
+        textfont={"size": 10},
+        colorbar=dict(title="Correlation")
+    ))
+    
+    fig_corr.update_layout(
+        title="Weekly Returns Correlation Matrix",
+        height=500,
+        width=700,
+        xaxis_title="",
+        yaxis_title="",
+        template="plotly_white"
+    )
+    
+    st.plotly_chart(fig_corr, use_container_width=True)
+    
+    # Estatísticas de correlação
+    st.write("### Correlation Statistics")
+    
+    # Extrair correlações únicas (triangular superior)
+    mask = np.triu(np.ones_like(correlation_matrix, dtype=bool), k=1)
+    upper_corr = correlation_matrix.where(mask)
+    
+    corr_values = upper_corr.values[mask]
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Average Correlation", f"{corr_values.mean():.3f}")
+    with col2:
+        st.metric("Max Correlation", f"{corr_values.max():.3f}")
+    with col3:
+        st.metric("Min Correlation", f"{corr_values.min():.3f}")
+    
+    # Aviso sobre diversificação
+    avg_corr = corr_values.mean()
+    if avg_corr > 0.7:
+        st.warning("⚠️ High average correlation detected. Strategies may not provide sufficient diversification.")
+    elif avg_corr < 0.3:
+        st.success("✅ Low correlation between strategies. Good diversification potential.")
+    else:
+        st.info("ℹ️ Moderate correlation between strategies.")
+        
+
 #################################
 ###  7. Summary Statistics  ###
 #################################
