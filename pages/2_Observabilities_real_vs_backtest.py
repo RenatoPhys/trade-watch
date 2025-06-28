@@ -542,6 +542,80 @@ else:
 
 st.write("## 3. Slippage Analysis")
 
+# Box plots dedicados para Slippage
+st.write("### Slippage Distribution Overview")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    # Box plot para Entry Slippage
+    fig_box_entry = go.Figure()
+    
+    if mode == "Single Strategy":
+        # Box plot por tipo de posição
+        for posi_type in ['long', 'short']:
+            data = df_combined[df_combined['posi'] == posi_type]['slippage_entry']
+            fig_box_entry.add_trace(go.Box(
+                y=data,
+                name=posi_type.capitalize(),
+                boxpoints='outliers',
+                marker_color='#2ecc71' if posi_type == 'long' else '#e74c3c'
+            ))
+    else:
+        # Box plot por estratégia
+        for strategy in df_combined['strategy_name'].unique():
+            data = df_combined[df_combined['strategy_name'] == strategy]['slippage_entry']
+            fig_box_entry.add_trace(go.Box(
+                y=data,
+                name=strategy,
+                boxpoints='outliers'
+            ))
+    
+    fig_box_entry.update_layout(
+        title="Entry Slippage Distribution",
+        yaxis_title="Slippage (points)",
+        height=400,
+        template="plotly_white",
+        showlegend=True
+    )
+    
+    st.plotly_chart(fig_box_entry, use_container_width=True)
+
+with col2:
+    # Box plot para Exit Slippage
+    fig_box_exit = go.Figure()
+    
+    if mode == "Single Strategy":
+        # Box plot por tipo de posição
+        for posi_type in ['long', 'short']:
+            data = df_combined[df_combined['posi'] == posi_type]['slippage_exit']
+            fig_box_exit.add_trace(go.Box(
+                y=data,
+                name=posi_type.capitalize(),
+                boxpoints='outliers',
+                marker_color='#2ecc71' if posi_type == 'long' else '#e74c3c'
+            ))
+    else:
+        # Box plot por estratégia
+        for strategy in df_combined['strategy_name'].unique():
+            data = df_combined[df_combined['strategy_name'] == strategy]['slippage_exit']
+            fig_box_exit.add_trace(go.Box(
+                y=data,
+                name=strategy,
+                boxpoints='outliers'
+            ))
+    
+    fig_box_exit.update_layout(
+        title="Exit Slippage Distribution",
+        yaxis_title="Slippage (points)",
+        height=400,
+        template="plotly_white",
+        showlegend=True
+    )
+    
+    st.plotly_chart(fig_box_exit, use_container_width=True)
+    
+
 # Criar subplots para entry e exit slippage
 col1, col2 = st.columns(2)
 
