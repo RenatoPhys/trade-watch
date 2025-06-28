@@ -142,15 +142,46 @@ def load_and_process_strategy_data(strategy_file):
         backtest_file = f'bases/backtest_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv'
         
         # Verificar se os arquivos existem
-        if not os.path.exists(real_file) or not os.path.exists(backtest_file):
-            st.warning(f"Files not found for {strategy_name} - {symbol}")
+        if not os.path.exists(real_file):
+            st.info(f"Real trades file not found for {strategy_name} - {symbol}")
+            st.info(f"Expected file: {real_file}")
+            return None, params
+            
+        if not os.path.exists(backtest_file):
+            st.info(f"Backtest file not found for {strategy_name} - {symbol}")
+            st.info(f"Expected file: {backtest_file}")
             return None, params
         
         # Carregar dados reais
-        df_real = pd.read_csv(real_file, parse_dates=['time', 'time_ent', 'time_ext'])
+        try:
+            df_real = pd.read_csv(real_file, parse_dates=['time', 'time_ent', 'time_ext'])
+        except Exception as e:
+            st.error(f"Error reading real trades file for {strategy_name}: {str(e)}")
+            return None, params
+        
+        # Verificar se tem dados
+        if df_real.empty:
+            st.warning(f"No real trades found for {strategy_name} - {symbol}")
+            return None, params
+        
+        # Debug: mostrar colunas do arquivo real
+        if st.checkbox(f"Show debug info for {strategy_name}", key=f"debug_{strategy_name}_{magic_number}"):
+            st.write(f"Real data columns: {', '.join(df_real.columns.tolist())}")
+            st.write(f"Real data shape: {df_real.shape}")
+            st.write("First few rows:")
+            st.dataframe(df_real.head())
         
         # Carregar dados de backtest
-        df_backtest = pd.read_csv(backtest_file, parse_dates=['time'])
+        try:
+            df_backtest = pd.read_csv(backtest_file, parse_dates=['time'])
+        except Exception as e:
+            st.error(f"Error reading backtest file for {strategy_name}: {str(e)}")
+            return None, params
+        
+        # Debug: mostrar colunas do backtest
+        if st.checkbox(f"Show backtest columns for {strategy_name}", key=f"debug_bt_{strategy_name}_{magic_number}"):
+            st.write(f"Backtest columns: {', '.join(df_backtest.columns.tolist())}")
+            st.write(f"Backtest shape: {df_backtest.shape}")
         
         # Verificar se tem a coluna position
         if 'position' not in df_backtest.columns:
@@ -169,10 +200,31 @@ def load_and_process_strategy_data(strategy_file):
         df_real['time_rounded'] = df_real['time'].dt.round('5min')
         df_backtest_trades['time_rounded'] = df_backtest_trades['time'].dt.round('5min')
         
+        # Verificar colunas do backtest
+        backtest_columns = df_backtest_trades.columns.tolist()
+        
+        # Verificar se tem a coluna pts_final ou similar
+        pts_col = None
+        for col in ['pts_final', 'points', 'pnl', 'profit_points']:
+            if col in backtest_columns:
+                pts_col = col
+                break
+        
+        if pts_col is None:
+            st.warning(f"No points/profit column found in backtest for {strategy_name} - {symbol}")
+            st.info(f"Available columns: {', '.join(backtest_columns)}")
+            return None, params
+        
+        # Selecionar colunas necessárias do backtest
+        merge_cols = ['time_rounded', 'open', 'close', 'position']
+        if pts_col != 'pts_final':
+            df_backtest_trades['pts_final'] = df_backtest_trades[pts_col]
+        merge_cols.append('pts_final')
+        
         # Fazer o merge
         df_merged = pd.merge(
             df_real,
-            df_backtest_trades[['time_rounded', 'open', 'close', 'position', 'pts_final']],
+            df_backtest_trades[merge_cols],
             on='time_rounded',
             how='inner',
             suffixes=('_real', '_backtest')
@@ -184,11 +236,25 @@ def load_and_process_strategy_data(strategy_file):
             return None, params
         
         # Verificar colunas necessárias
-        required_cols = ['posi', 'price_ent', 'price_ext', 'pts_final_real', 'profit', 'comment', 'time_ent', 'time_ext']
+        required_cols = ['posi', 'price_ent', 'price_ext', 'profit', 'time_ent', 'time_ext']
         missing_cols = [col for col in required_cols if col not in df_merged.columns]
         if missing_cols:
             st.error(f"Missing required columns for {strategy_name} - {symbol}: {missing_cols}")
+            st.info(f"Available columns in merged data: {', '.join(df_merged.columns.tolist())}")
             return None, params
+        
+        # Verificar se tem pts_final_real ou calcular
+        if 'pts_final_real' not in df_merged.columns:
+            # Tentar calcular pontos baseado no lucro e valor por ponto
+            if 'profit' in df_merged.columns and valor_por_ponto > 0:
+                df_merged['pts_final_real'] = df_merged['profit'] / valor_por_ponto
+            else:
+                # Usar diferença de preços
+                df_merged['pts_final_real'] = np.where(
+                    df_merged['posi'] == 'long',
+                    df_merged['price_ext'] - df_merged['price_ent'],
+                    df_merged['price_ent'] - df_merged['price_ext']
+                )
         
         # Adicionar identificação da estratégia
         df_merged['strategy_name'] = f"{strategy_name} - {symbol}"
@@ -199,6 +265,14 @@ def load_and_process_strategy_data(strategy_file):
             # Obter valor por ponto do arquivo de parâmetros
             valor_por_ponto = params.get('valor_lote', params.get('tc', 0.2))
             
+            # Debug info
+            if st.checkbox(f"Show merged data info for {strategy_name}", key=f"debug_merged_{strategy_name}_{magic_number}"):
+                st.write(f"Merged columns: {', '.join(df_merged.columns.tolist())}")
+                st.write(f"Merged shape: {df_merged.shape}")
+                if not df_merged.empty:
+                    st.write("Sample merged data:")
+                    st.dataframe(df_merged.head())
+            
             df_merged['slippage_entry'] = np.where(
                 df_merged['posi'] == 'long',
                 df_merged['price_ent'] - df_merged['close'],
@@ -207,24 +281,33 @@ def load_and_process_strategy_data(strategy_file):
             
             df_merged['slippage_exit'] = np.where(
                 df_merged['posi'] == 'long',
-                df_merged['price_ext'] - (df_merged['price_ent'] + df_merged['pts_final_real']),
-                (df_merged['price_ent'] - df_merged['pts_final_real']) - df_merged['price_ext']
+                df_merged['price_ext'] - df_merged['price_ent'] - df_merged['pts_final_real'],
+                df_merged['price_ent'] - df_merged['price_ext'] - df_merged['pts_final_real']
             )
             
             df_merged['profit_delta'] = df_merged['profit'] - (df_merged['pts_final'] * valor_por_ponto)
             df_merged['timing_delta'] = (df_merged['time_ext'] - df_merged['time_ent']).dt.total_seconds() / 60
             
             # Identificar hits de TP/SL
-            df_merged['hit_tp'] = df_merged['comment'].str.contains('tp', case=False, na=False)
-            df_merged['hit_sl'] = df_merged['comment'].str.contains('sl', case=False, na=False)
+            # Garantir que a coluna comment seja string
+            if 'comment' in df_merged.columns:
+                df_merged['comment'] = df_merged['comment'].fillna('').astype(str)
+                df_merged['hit_tp'] = df_merged['comment'].str.contains('tp', case=False, na=False)
+                df_merged['hit_sl'] = df_merged['comment'].str.contains('sl', case=False, na=False)
+            else:
+                # Se não tem coluna comment, criar com valores False
+                df_merged['hit_tp'] = False
+                df_merged['hit_sl'] = False
             
             # Adicionar informações extras
             df_merged['tp_points'] = tp_points
             df_merged['sl_points'] = sl_points
             df_merged['valor_por_ponto'] = valor_por_ponto
             
-        except KeyError as e:
-            st.error(f"Missing required column for {strategy_name} - {symbol}: {str(e)}")
+        except Exception as e:
+            st.error(f"Error calculating metrics for {strategy_name} - {symbol}: {str(e)}")
+            import traceback
+            st.text(traceback.format_exc())
             return None, params
         
         return df_merged, params
@@ -232,7 +315,8 @@ def load_and_process_strategy_data(strategy_file):
     except Exception as e:
         st.error(f"Error processing {strategy_file}: {str(e)}")
         import traceback
-        st.error(f"Traceback: {traceback.format_exc()}")
+        st.text("Full traceback:")
+        st.text(traceback.format_exc())
         return None, None
 
 # Carregar dados de todas as estratégias selecionadas
