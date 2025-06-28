@@ -92,78 +92,148 @@ else:
 # Função para carregar e processar dados de uma estratégia
 @st.cache_data
 def load_and_process_strategy_data(strategy_file):
-    with open(strategy_file, 'r') as f:
-        params = json.load(f)
-    
-    symbol = params['symbol']
-    timeframe = params['timeframe']
-    strategy_name = params['strategy']
-    magic_number = params['magic_number']
-    
-    # Pegar TP/SL da hora 9 como exemplo
-    tp_points = params['hour_params']['9']['tp']
-    sl_points = params['hour_params']['9']['sl']
-    
-    # Construir nomes dos arquivos
-    real_file = f'bases/results_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv'
-    backtest_file = f'bases/backtest_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv'
-    
-    # Verificar se os arquivos existem
-    if not os.path.exists(real_file) or not os.path.exists(backtest_file):
-        st.warning(f"Files not found for {strategy_name} - {symbol}")
-        return None, params
-    
-    # Carregar dados reais
-    df_real = pd.read_csv(real_file, parse_dates=['time', 'time_ent', 'time_ext'])
-    
-    # Carregar dados de backtest
-    df_backtest = pd.read_csv(backtest_file, parse_dates=['time'])
-    
-    # Preparar dados do backtest - filtrar apenas trades
-    df_backtest_trades = df_backtest[df_backtest['position'] != 0].copy()
-    
-    # Merge dos dados - matching por horário próximo
-    df_real['time_rounded'] = df_real['time'].dt.round('5min')
-    df_backtest_trades['time_rounded'] = df_backtest_trades['time'].dt.round('5min')
-    
-    # Fazer o merge
-    df_merged = pd.merge(
-        df_real,
-        df_backtest_trades[['time_rounded', 'open', 'close', 'position', 'pts_final']],
-        on='time_rounded',
-        how='inner',
-        suffixes=('_real', '_backtest')
-    )
-    
-    # Adicionar identificação da estratégia
-    df_merged['strategy_name'] = f"{strategy_name} - {symbol}"
-    df_merged['strategy_id'] = f"{strategy_name}_{symbol}_{magic_number}"
-    
-    # Calcular métricas
-    df_merged['slippage_entry'] = np.where(
-        df_merged['posi'] == 'long',
-        df_merged['price_ent'] - df_merged['close'],
-        df_merged['close'] - df_merged['price_ent']
-    )
-    
-    df_merged['slippage_exit'] = np.where(
-        df_merged['posi'] == 'long',
-        df_merged['price_ext'] - (df_merged['price_ent'] + df_merged['pts_final_real']),
-        (df_merged['price_ent'] - df_merged['pts_final_real']) - df_merged['price_ext']
-    )
-    
-    df_merged['profit_delta'] = df_merged['profit'] - (df_merged['pts_final'] * 0.2)
-    df_merged['timing_delta'] = (df_merged['time_ext'] - df_merged['time_ent']).dt.total_seconds() / 60
-    
-    # Identificar hits de TP/SL
-    df_merged['hit_tp'] = df_merged['comment'].str.contains('tp', case=False, na=False)
-    df_merged['hit_sl'] = df_merged['comment'].str.contains('sl', case=False, na=False)
-    
-    # Adicionar informações extras
-    df_merged['tp_points'] = tp_points
-    df_merged['sl_points'] = sl_points
-    
-    return df_merged, params
+    try:
+        with open(strategy_file, 'r') as f:
+            params = json.load(f)
+        
+        symbol = params['symbol']
+        timeframe = params['timeframe']
+        strategy_name = params['strategy']
+        magic_number = params['magic_number']
+        
+        # Pegar TP/SL - tentar diferentes estruturas
+        tp_points = None
+        sl_points = None
+        
+        # Tentar pegar da estrutura hour_params
+        if 'hour_params' in params and params['hour_params']:
+            # Pegar as chaves disponíveis (podem ser strings ou números)
+            hour_keys = list(params['hour_params'].keys())
+            
+            # Tentar encontrar uma hora válida
+            # Primeiro tentar horas comuns (9, 10, 11)
+            for hour in ['9', 9, '10', 10, '11', 11]:
+                if str(hour) in params['hour_params']:
+                    hour_data = params['hour_params'][str(hour)]
+                    tp_points = hour_data.get('tp')
+                    sl_points = hour_data.get('sl')
+                    break
+                elif hour in params['hour_params']:
+                    hour_data = params['hour_params'][hour]
+                    tp_points = hour_data.get('tp')
+                    sl_points = hour_data.get('sl')
+                    break
+            
+            # Se não encontrou, pegar do primeiro horário disponível
+            if tp_points is None and hour_keys:
+                first_hour = hour_keys[0]
+                hour_data = params['hour_params'][first_hour]
+                tp_points = hour_data.get('tp')
+                sl_points = hour_data.get('sl')
+        
+        # Tentar estrutura alternativa (tp/sl direto nos params)
+        if tp_points is None:
+            tp_points = params.get('tp', params.get('take_profit', 50))  # valor padrão 50
+        if sl_points is None:
+            sl_points = params.get('sl', params.get('stop_loss', 50))  # valor padrão 50
+        
+        # Construir nomes dos arquivos
+        real_file = f'bases/results_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv'
+        backtest_file = f'bases/backtest_{symbol}_{timeframe}_{strategy_name}_magic_{magic_number}.csv'
+        
+        # Verificar se os arquivos existem
+        if not os.path.exists(real_file) or not os.path.exists(backtest_file):
+            st.warning(f"Files not found for {strategy_name} - {symbol}")
+            return None, params
+        
+        # Carregar dados reais
+        df_real = pd.read_csv(real_file, parse_dates=['time', 'time_ent', 'time_ext'])
+        
+        # Carregar dados de backtest
+        df_backtest = pd.read_csv(backtest_file, parse_dates=['time'])
+        
+        # Verificar se tem a coluna position
+        if 'position' not in df_backtest.columns:
+            st.warning(f"Backtest file missing 'position' column for {strategy_name} - {symbol}")
+            return None, params
+        
+        # Preparar dados do backtest - filtrar apenas trades
+        df_backtest_trades = df_backtest[df_backtest['position'] != 0].copy()
+        
+        # Verificar se há trades no backtest
+        if df_backtest_trades.empty:
+            st.warning(f"No trades found in backtest for {strategy_name} - {symbol}")
+            return None, params
+        
+        # Merge dos dados - matching por horário próximo
+        df_real['time_rounded'] = df_real['time'].dt.round('5min')
+        df_backtest_trades['time_rounded'] = df_backtest_trades['time'].dt.round('5min')
+        
+        # Fazer o merge
+        df_merged = pd.merge(
+            df_real,
+            df_backtest_trades[['time_rounded', 'open', 'close', 'position', 'pts_final']],
+            on='time_rounded',
+            how='inner',
+            suffixes=('_real', '_backtest')
+        )
+        
+        # Verificar se o merge resultou em dados
+        if df_merged.empty:
+            st.warning(f"No matching trades found between real and backtest for {strategy_name} - {symbol}")
+            return None, params
+        
+        # Verificar colunas necessárias
+        required_cols = ['posi', 'price_ent', 'price_ext', 'pts_final_real', 'profit', 'comment', 'time_ent', 'time_ext']
+        missing_cols = [col for col in required_cols if col not in df_merged.columns]
+        if missing_cols:
+            st.error(f"Missing required columns for {strategy_name} - {symbol}: {missing_cols}")
+            return None, params
+        
+        # Adicionar identificação da estratégia
+        df_merged['strategy_name'] = f"{strategy_name} - {symbol}"
+        df_merged['strategy_id'] = f"{strategy_name}_{symbol}_{magic_number}"
+        
+        try:
+            # Calcular métricas
+            # Obter valor por ponto do arquivo de parâmetros
+            valor_por_ponto = params.get('valor_lote', params.get('tc', 0.2))
+            
+            df_merged['slippage_entry'] = np.where(
+                df_merged['posi'] == 'long',
+                df_merged['price_ent'] - df_merged['close'],
+                df_merged['close'] - df_merged['price_ent']
+            )
+            
+            df_merged['slippage_exit'] = np.where(
+                df_merged['posi'] == 'long',
+                df_merged['price_ext'] - (df_merged['price_ent'] + df_merged['pts_final_real']),
+                (df_merged['price_ent'] - df_merged['pts_final_real']) - df_merged['price_ext']
+            )
+            
+            df_merged['profit_delta'] = df_merged['profit'] - (df_merged['pts_final'] * valor_por_ponto)
+            df_merged['timing_delta'] = (df_merged['time_ext'] - df_merged['time_ent']).dt.total_seconds() / 60
+            
+            # Identificar hits de TP/SL
+            df_merged['hit_tp'] = df_merged['comment'].str.contains('tp', case=False, na=False)
+            df_merged['hit_sl'] = df_merged['comment'].str.contains('sl', case=False, na=False)
+            
+            # Adicionar informações extras
+            df_merged['tp_points'] = tp_points
+            df_merged['sl_points'] = sl_points
+            df_merged['valor_por_ponto'] = valor_por_ponto
+            
+        except KeyError as e:
+            st.error(f"Missing required column for {strategy_name} - {symbol}: {str(e)}")
+            return None, params
+        
+        return df_merged, params
+        
+    except Exception as e:
+        st.error(f"Error processing {strategy_file}: {str(e)}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
+        return None, None
 
 # Carregar dados de todas as estratégias selecionadas
 all_merged_data = []
@@ -171,7 +241,7 @@ all_params = []
 
 for strategy_file in selected_strategies:
     df_merged, params = load_and_process_strategy_data(strategy_file)
-    if df_merged is not None:
+    if df_merged is not None and params is not None:
         all_merged_data.append(df_merged)
         all_params.append(params)
 
@@ -182,15 +252,60 @@ if not all_merged_data:
 # Combinar todos os dados
 df_combined = pd.concat(all_merged_data, ignore_index=True)
 
-# Mostrar informações das estratégias selecionadas
+# Adicionar aviso se nenhuma estratégia tem dados de comparação
+if df_combined.empty:
+    st.warning("No matched trades found between real and backtest data for any selected strategy.")
+    st.info("This could happen if:\n- The real trading data doesn't match backtest timeframes\n- The strategies haven't generated trades yet\n- There's a mismatch in the data files")
+    st.stop()
 if len(all_params) == 1:
-    st.write(f"### Strategy: {all_params[0]['strategy']} - {all_params[0]['symbol']}")
-    st.write(f"**Timeframe:** {all_params[0]['timeframe']} | **Magic:** {all_params[0]['magic_number']}")
+    params = all_params[0]
+    st.write(f"### Strategy: {params['strategy']} - {params['symbol']}")
+    st.write(f"**Timeframe:** {params['timeframe']} | **Magic:** {params['magic_number']}")
+    
+    # Mostrar informações adicionais
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if 'tc' in params:
+            st.write(f"**TC:** {params['tc']}")
+    with col2:
+        if 'lote' in params:
+            st.write(f"**Lote:** {params['lote']}")
+    with col3:
+        if 'daytrade' in params:
+            st.write(f"**Daytrade:** {'Yes' if params['daytrade'] else 'No'}")
+    
+    # Mostrar TP/SL se disponível
+    if all_merged_data and 'tp_points' in all_merged_data[0].columns:
+        tp = all_merged_data[0]['tp_points'].iloc[0] if not all_merged_data[0].empty else 'N/A'
+        sl = all_merged_data[0]['sl_points'].iloc[0] if not all_merged_data[0].empty else 'N/A'
+        st.write(f"**TP/SL Points:** {tp}/{sl}")
+        
+        # Mostrar horas de operação se disponível
+        if 'hours' in params:
+            st.write(f"**Operating Hours:** {', '.join(map(str, params['hours']))}")
 else:
     st.write(f"### Analyzing {len(all_params)} Strategies")
     with st.expander("Strategy Details"):
-        for params in all_params:
-            st.write(f"- **{params['strategy']}** on {params['symbol']} ({params['timeframe']}) - Magic: {params['magic_number']}")
+        for i, params in enumerate(all_params):
+            st.write(f"**{i+1}. {params['strategy']}** on {params['symbol']} ({params['timeframe']}) - Magic: {params['magic_number']}")
+            
+            # Mostrar detalhes adicionais
+            details = []
+            if 'tc' in params:
+                details.append(f"TC: {params['tc']}")
+            if 'lote' in params:
+                details.append(f"Lote: {params['lote']}")
+            if 'hours' in params:
+                details.append(f"Hours: {', '.join(map(str, params['hours']))}")
+            
+            if details:
+                st.write(f"   {' | '.join(details)}")
+            
+            # Mostrar TP/SL se disponível
+            if i < len(all_merged_data) and all_merged_data[i] is not None and not all_merged_data[i].empty:
+                tp = all_merged_data[i]['tp_points'].iloc[0] if 'tp_points' in all_merged_data[i].columns else 'N/A'
+                sl = all_merged_data[i]['sl_points'].iloc[0] if 'sl_points' in all_merged_data[i].columns else 'N/A'
+                st.write(f"   TP/SL: {tp}/{sl} points")
 
 #################################
 ###  1. Overview Metrics  ###
@@ -215,7 +330,7 @@ if mode == "Single Strategy":
         st.metric("Avg Entry Slippage", f"{avg_slippage_entry:.1f} pts")
         
     with col4:
-        correlation = df_combined['profit'].corr(df_combined['pts_final'] * 0.2)
+        correlation = df_combined['profit'].corr(df_combined['pts_final'] * df_combined['valor_por_ponto'])
         st.metric("Real vs Backtest Correlation", f"{correlation:.3f}")
 else:
     # Métricas por estratégia
@@ -229,7 +344,7 @@ else:
             'Matched Trades': len(df_strategy),
             'Avg Profit Delta': df_strategy['profit_delta'].mean(),
             'Avg Entry Slippage': df_strategy['slippage_entry'].mean(),
-            'Correlation': df_strategy['profit'].corr(df_strategy['pts_final'] * 0.2)
+            'Correlation': df_strategy['profit'].corr(df_strategy['pts_final'] * df_strategy['valor_por_ponto'].iloc[0])
         }
         strategy_metrics.append(metrics)
     
@@ -500,28 +615,34 @@ st.write("## 5. Trade-by-Trade Comparison")
 
 # Scatter plot: Real vs Backtest profits
 if mode == "Single Strategy":
+    # Criar coluna com profit do backtest em R$
+    df_combined['backtest_profit_rs'] = df_combined['pts_final'] * df_combined['valor_por_ponto']
+    
     fig_scatter = px.scatter(
         df_combined,
-        x=df_combined['pts_final'] * 0.2,
+        x='backtest_profit_rs',
         y='profit',
         color='posi',
         title="Real vs Backtest Profits",
-        labels={'x': 'Backtest Profit (R$)', 'profit': 'Real Profit (R$)'},
+        labels={'backtest_profit_rs': 'Backtest Profit (R$)', 'profit': 'Real Profit (R$)'},
         color_discrete_map={'long': '#2ecc71', 'short': '#e74c3c'}
     )
 else:
+    # Criar coluna com profit do backtest em R$
+    df_combined['backtest_profit_rs'] = df_combined['pts_final'] * df_combined['valor_por_ponto']
+    
     fig_scatter = px.scatter(
         df_combined,
-        x=df_combined['pts_final'] * 0.2,
+        x='backtest_profit_rs',
         y='profit',
         color='strategy_name',
         symbol='posi',
         title="Real vs Backtest Profits by Strategy",
-        labels={'x': 'Backtest Profit (R$)', 'profit': 'Real Profit (R$)'}
+        labels={'backtest_profit_rs': 'Backtest Profit (R$)', 'profit': 'Real Profit (R$)'}
     )
 
 # Adicionar linha de referência diagonal
-x_range = [df_combined['pts_final'].min() * 0.2, df_combined['pts_final'].max() * 0.2]
+x_range = [df_combined['backtest_profit_rs'].min(), df_combined['backtest_profit_rs'].max()]
 fig_scatter.add_trace(go.Scatter(
     x=x_range,
     y=x_range,
@@ -577,8 +698,9 @@ if mode == "Single Strategy":
     # Calcular métricas resumidas
     avg_entry_slip = df_combined['slippage_entry'].mean()
     avg_exit_slip = df_combined['slippage_exit'].mean()
-    total_slip_cost = (avg_entry_slip + abs(avg_exit_slip)) * 0.2 * len(df_combined)
-    correlation = df_combined['profit'].corr(df_combined['pts_final'] * 0.2)
+    valor_medio = df_combined['valor_por_ponto'].iloc[0]
+    total_slip_cost = (avg_entry_slip + abs(avg_exit_slip)) * valor_medio * len(df_combined)
+    correlation = df_combined['profit'].corr(df_combined['pts_final'] * df_combined['valor_por_ponto'])
     tp_rate = (df_combined['hit_tp'].sum() / len(df_combined) * 100)
     
     insights = f"""
@@ -606,7 +728,7 @@ if mode == "Single Strategy":
 else:
     # Insights para múltiplas estratégias
     best_correlation = df_combined.groupby('strategy_name').apply(
-        lambda x: x['profit'].corr(x['pts_final'] * 0.2)
+        lambda x: x['profit'].corr(x['pts_final'] * x['valor_por_ponto'].iloc[0]) if len(x) > 1 else 0
     ).idxmax()
     
     worst_slippage = df_combined.groupby('strategy_name')['slippage_entry'].mean().abs().idxmax()
