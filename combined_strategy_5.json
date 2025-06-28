@@ -52,7 +52,7 @@
     },
     "tc": 1.15,
     "lote": 1,
-    "valor_lote": 0.2,
+    "valor_lote": 10.0,
     "daytrade": true,
     "magic_number": 3443,
     "optimize_metric": "calmar_ratio",

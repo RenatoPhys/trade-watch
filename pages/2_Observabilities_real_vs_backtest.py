@@ -260,8 +260,8 @@ def load_strategy_data_cached(strategy_file):
         
         df_merged['slippage_exit'] = np.where(
             df_merged['posi'] == 'long',
-            df_merged['price_ext'] - df_merged['price_ent'] - df_merged['pts_final_real'],
-            df_merged['price_ent'] - df_merged['price_ext'] - df_merged['pts_final_real']
+            df_merged['price_ext'] - df_merged['pts_final'] - df_merged['close'],
+            df_merged['price_ext'] + df_merged['pts_final'] - df_merged['close']
         )
         
         df_merged['profit_delta'] = df_merged['profit'] - (df_merged['pts_final'] * valor_por_ponto)
@@ -614,7 +614,7 @@ with col2:
     )
     
     st.plotly_chart(fig_box_exit, use_container_width=True)
-    
+
 
 # Criar subplots para entry e exit slippage
 col1, col2 = st.columns(2)
