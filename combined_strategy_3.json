@@ -1,5 +1,5 @@
 {
-    "symbol": "WIN@N",
+    "symbol": "WINQ25",
     "timeframe": "t5",
     "strategy": "bb_trend",
     "hours": [
@@ -50,7 +50,7 @@
             "sl": 1650.0
         }
     },
-    "tc": 1.0,
+    "tc": 0.50,
     "lote": 1,
     "valor_lote": 0.2,
     "daytrade": true,

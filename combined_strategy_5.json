@@ -1,5 +1,5 @@
 {
-    "symbol": "WDO@N",
+    "symbol": "WDON25",
     "timeframe": "t5",
     "strategy": "bb_anti_trend",
     "hours": [
@@ -50,7 +50,7 @@
             "sl": 10.0
         }
     },
-    "tc": 1.0,
+    "tc": 1.15,
     "lote": 1,
     "valor_lote": 0.2,
     "daytrade": true,

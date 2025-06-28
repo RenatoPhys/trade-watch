@@ -1,5 +1,5 @@
 {
-    "symbol": "WDO@N",
+    "symbol": "WDON25",
     "timeframe": "t5",
     "strategy": "gold_rsi_trend",
     "hours": [
@@ -54,7 +54,7 @@
             "sl": 31
         }
     },
-    "tc": 0.2,
+    "tc": 1.15,
     "valor_lote": 0.2,
     "lote": 1.0,    
     "daytrade": true,

@@ -1,5 +1,5 @@
 {
-    "symbol": "WIN@N",
+    "symbol": "WINQ25",
     "timeframe": "t5",
     "strategy": "pattern_rsi_trend",
     "hours": [
@@ -78,7 +78,7 @@
             "sl": 600
         }
     },
-    "tc": 0.2,
+    "tc": 0.50,
     "valor_lote": 0.2,
     "lote": 1.0,    
     "daytrade": true,
