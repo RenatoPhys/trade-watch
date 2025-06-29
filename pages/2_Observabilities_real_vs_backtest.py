@@ -471,6 +471,7 @@ else:
             'Matched Trades': len(df_strategy),
             'Avg Profit Delta': df_strategy['profit_delta'].mean(),
             'Avg Entry Slippage': df_strategy['slippage_entry'].mean(),
+            'Avg Exit Slippage': df_strategy['slippage_exit'].mean(),
             'Correlation': df_strategy['profit'].corr(df_strategy['pts_final'] * df_strategy['valor_por_ponto'].iloc[0])
         }
         strategy_metrics.append(metrics)
