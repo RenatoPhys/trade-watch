@@ -518,12 +518,18 @@ if len(all_data) > 1:
         trades = len(returns[returns != 0])
         wr = (wins / trades * 100) if trades > 0 else 0
         
+        # Profit Factor individual
+        profits_ind = returns[returns > 0].sum()
+        losses_ind = abs(returns[returns < 0].sum())
+        pf_ind = (profits_ind / losses_ind) if losses_ind > 0 else float('inf') if profits_ind > 0 else 0
+        
         strategy_metrics.append({
             'Strategy': f"{params['strategy']} - {params['symbol']}",
             'Total Return': total_ret,
             'Return %': (total_ret / (initial_equity/len(all_data))) * 100,
             'Sharpe Ratio': sharpe,
             'Win Rate': wr,
+            'Profit Factor': pf_ind,
             'Max DD': returns.cumsum().cummax().sub(returns.cumsum()).min()
         })
     
@@ -533,9 +539,11 @@ if len(all_data) > 1:
         'Return %': '{:.1f}%',
         'Sharpe Ratio': '{:.2f}',
         'Win Rate': '{:.1f}%',
+        'Profit Factor': lambda x: f'{x:.2f}' if x != float('inf') else '∞',
         'Max DD': 'R$ {:,.2f}'
     }))
 
+    
 #################################
 ### 6.5 Strategy Correlation  ###
 #################################
