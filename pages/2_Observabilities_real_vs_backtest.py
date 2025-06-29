@@ -438,7 +438,7 @@ st.write("## 1. Overview Metrics")
 
 if mode == "Single Strategy":
     # Métricas simples para estratégia única
-    col1, col2, col3, col4, col5 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         total_trades = len(df_combined)
