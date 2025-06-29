@@ -480,6 +480,7 @@ else:
     st.dataframe(metrics_df.style.format({
         'Avg Profit Delta': 'R$ {:.2f}',
         'Avg Entry Slippage': '{:.1f} pts',
+        'Avg Exit Slippage': '{:.1f} pts',
         'Correlation': '{:.3f}'
     }))
 
