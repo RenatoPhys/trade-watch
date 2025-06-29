@@ -438,7 +438,7 @@ st.write("## 1. Overview Metrics")
 
 if mode == "Single Strategy":
     # Métricas simples para estratégia única
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(4)
     
     with col1:
         total_trades = len(df_combined)
@@ -451,8 +451,12 @@ if mode == "Single Strategy":
     with col3:
         avg_slippage_entry = df_combined['slippage_entry'].mean()
         st.metric("Avg Entry Slippage", f"{avg_slippage_entry:.1f} pts")
-        
+
     with col4:
+        avg_slippage_exit = df_combined['slippage_exit'].mean()
+        st.metric("Avg Exit Slippage", f"{avg_slippage_exit:.1f} pts")
+        
+    with col5:
         correlation = df_combined['profit'].corr(df_combined['pts_final'] * df_combined['valor_por_ponto'])
         st.metric("Real vs Backtest Correlation", f"{correlation:.3f}")
 else:
