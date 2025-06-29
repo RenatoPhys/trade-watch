@@ -201,6 +201,11 @@ winning_days = len(daily_returns[daily_returns > 0])
 total_trading_days = len(daily_returns[daily_returns != 0])
 win_rate = (winning_days / total_trading_days * 100) if total_trading_days > 0 else 0
 
+# Calcular Profit Factor
+profits = daily_returns[daily_returns > 0].sum()
+losses = abs(daily_returns[daily_returns < 0].sum())
+profit_factor = (profits / losses) if losses > 0 else float('inf') if profits > 0 else 0
+
 # Exibir métricas em cards
 col1, col2, col3, col4 = st.columns(4)
 
@@ -214,7 +219,7 @@ with col2:
 
 with col3:
     st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
-    st.metric("Win Rate", f"{win_rate:.1f}%")
+    st.metric("Profit Factor", f"{profit_factor:.2f}")
 
 with col4:
     st.metric("Total Days", f"{total_days:,}")
@@ -633,6 +638,7 @@ summary_stats = {
         f"{max([p['Duration (days)'] for p in dd_periods])} days" if dd_periods else "N/A",
         f"{sharpe_ratio:.2f}",
         f"{sortino_ratio:.2f}" if not np.isnan(sortino_ratio) else "N/A",
+        f"{profit_factor:.2f}"
         f"{win_rate:.1f}%",
         f"R$ {daily_returns.max():,.2f}",
         f"R$ {daily_returns.min():,.2f}",
