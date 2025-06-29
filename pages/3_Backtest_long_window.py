@@ -210,16 +210,16 @@ profit_factor = (profits / losses) if losses > 0 else float('inf') if profits > 
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("Total Return", f"R$ {total_return:,.2f}", f"{total_return_pct:.1f}%")
-    st.metric("Annual Return", f"R$ {annual_return:,.2f}", f"{annual_return_pct:.1f}%")
+    st.metric("Total Return", f"R$ {total_return:,.1f}", f"{total_return_pct:.1f}%")
+    st.metric("Annual Return", f"R$ {annual_return:,.1f}", f"{annual_return_pct:.1f}%")
 
 with col2:
-    st.metric("Max Drawdown", f"R$ {max_drawdown:,.2f}")
+    st.metric("Max Drawdown", f"R$ {max_drawdown:,.1f}")
     st.metric("Max Drawdown %", f"{max_drawdown_pct:.1f}%")
 
 with col3:
     st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
-    st.metric("Profit Factor", f"{profit_factor:.2f}")
+    st.metric("Profit Factor", f"R$ {profit_factor:.2f}")
 
 with col4:
     st.metric("Total Days", f"{total_days:,}")
@@ -626,7 +626,7 @@ else:
 # Criar tabela resumo
 summary_stats = {
     'Metric': ['Initial Equity', 'Total Return', 'Annual Return', 'Monthly Avg Return', 'Daily Avg Return',
-               'Max Drawdown', 'Max DD Duration', 'Sharpe Ratio', 'Sortino Ratio',
+               'Max Drawdown', 'Max DD Duration', 'Sharpe Ratio', 'Sortino Ratio', 'Profit Factor',
                'Win Rate', 'Best Day', 'Worst Day', 'Volatility (Annual)'],
     'Value': [
         f"R$ {initial_equity:,.2f}",
@@ -638,7 +638,7 @@ summary_stats = {
         f"{max([p['Duration (days)'] for p in dd_periods])} days" if dd_periods else "N/A",
         f"{sharpe_ratio:.2f}",
         f"{sortino_ratio:.2f}" if not np.isnan(sortino_ratio) else "N/A",
-        f"{profit_factor:.2f}"
+        f"R$ {profit_factor:.2f}"
         f"{win_rate:.1f}%",
         f"R$ {daily_returns.max():,.2f}",
         f"R$ {daily_returns.min():,.2f}",
