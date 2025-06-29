@@ -219,7 +219,7 @@ with col2:
 
 with col3:
     st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
-    st.metric("Profit Factor", f"R$ {profit_factor:.2f}")
+    st.metric("Profit Factor", f"{profit_factor:.2f}")
 
 with col4:
     st.metric("Total Days", f"{total_days:,}")
@@ -638,7 +638,7 @@ summary_stats = {
         f"{max([p['Duration (days)'] for p in dd_periods])} days" if dd_periods else "N/A",
         f"{sharpe_ratio:.2f}",
         f"{sortino_ratio:.2f}" if not np.isnan(sortino_ratio) else "N/A",
-        f"R$ {profit_factor:.2f}",
+        f"{profit_factor:.2f}",
         f"{win_rate:.1f}%",
         f"R$ {daily_returns.max():,.2f}",
         f"R$ {daily_returns.min():,.2f}",
